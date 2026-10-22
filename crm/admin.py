@@ -40,6 +40,11 @@ class ContractForm(forms.ModelForm):
 @admin.register(Contract)
 class ContractAdmin(AuditedAdmin):
     form=ContractForm
+    def get_fields(self,request,obj=None):
+        fields=super().get_fields(request,obj)
+        if obj is not None:
+            fields=[field for field in fields if field != 'task_templates']
+        return fields
     inlines=[LineInline,BookingInline]
     list_display=['id','number','date','customer','operator','start','end','amount','paid','cost','profit']
     list_filter=['operator','country','payment_method','date','start']
@@ -109,6 +114,11 @@ class TaskForm(forms.ModelForm):
 @admin.register(Task)
 class TaskAdmin(AuditedAdmin):
     form=TaskForm
+    def get_fields(self,request,obj=None):
+        fields=super().get_fields(request,obj)
+        if obj is not None:
+            fields=[field for field in fields if field not in ('repeat','occurrences')]
+        return fields
     def save_model(self,request,obj,form,change):
         super().save_model(request,obj,form,change)
         if not change and form.cleaned_data.get('repeat'):

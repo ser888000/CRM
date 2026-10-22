@@ -61,3 +61,21 @@ class WorkflowTests(TestCase):
             'bookings-TOTAL_FORMS':'0','bookings-INITIAL_FORMS':'0','bookings-MIN_NUM_FORMS':'0','bookings-MAX_NUM_FORMS':'1000','_save':'Сохранить'})
         self.assertEqual(response.status_code,302)
         self.assertEqual(Task.objects.get().due,date(2026,11,9))
+
+    def test_existing_contract_and_task_edit_pages(self):
+        self.client.force_login(self.user)
+        response=self.client.get(f'/admin/crm/contract/{self.c.pk}/change/')
+        self.assertEqual(response.status_code,200)
+        self.assertNotContains(response,'name="task_templates"')
+        task=Task.objects.create(title='Проверить вылет',due=date(2026,11,9))
+        response=self.client.get(f'/admin/crm/task/{task.pk}/change/')
+        self.assertEqual(response.status_code,200)
+        self.assertNotContains(response,'name="repeat"')
+        self.assertNotContains(response,'name="occurrences"')
+        response=self.client.post(f'/admin/crm/task/{task.pk}/change/',{
+            'title':task.title,'due':'2026-11-08','done':'on','_save':'Сохранить'})
+        self.assertEqual(response.status_code,302)
+        task.refresh_from_db()
+        self.assertTrue(task.done)
+        self.assertEqual(task.due,date(2026,11,8))
+        self.assertEqual(Task.objects.count(),1)
