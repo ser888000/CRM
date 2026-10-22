@@ -1,12 +1,14 @@
 from django import forms
-from .models import Contract,TaskTemplate,Payment,Customer
+from .models import Contract,TaskTemplate,Payment,Customer,DepartureCity,Country
 from .services import task_due
+from .widgets import LocationInput
 
 class ContractForm(forms.ModelForm):
     task_templates=forms.ModelMultipleChoiceField(label='Создать задачи (снимите ненужные)',queryset=TaskTemplate.objects.all(),required=False,widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Contract
         fields='__all__'
+        widgets={'departure':LocationInput(DepartureCity),'country':LocationInput(Country)}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         if self.instance.pk:
@@ -18,6 +20,14 @@ class ContractForm(forms.ModelForm):
             field=self.fields.get(f'task_due_{template.pk}')
             if field:
                 field.initial=task_due(self.instance,template)
+    def clean_departure(self):
+        value=self.cleaned_data['departure']
+        reference=DepartureCity.match(value) if value else None
+        return reference.name if reference else value
+    def clean_country(self):
+        value=self.cleaned_data['country']
+        reference=Country.match(value) if value else None
+        return reference.name if reference else value
     def clean(self):
         data=super().clean()
         for template in data.get('task_templates',[]):

@@ -6,7 +6,7 @@ from django.urls import path
 from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod
+from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod, DepartureCity, Country
 from .services import create_tasks, copy_contract
 from .forms import ContractForm, PaymentForm
 
@@ -208,3 +208,10 @@ class AuditAdmin(admin.ModelAdmin):
 admin.site.site_header='АБОРИГЕН-ТУР · CRM'
 admin.site.site_title='АБОРИГЕН-ТУР'
 admin.site.index_title='Управление агентством'
+
+
+@admin.register(DepartureCity,Country)
+class LocationAdmin(AuditedAdmin):
+    list_display=['name','code']
+    search_fields=['name','code']
+    readonly_fields=['details']

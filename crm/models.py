@@ -199,3 +199,32 @@ class AuditEvent(models.Model):
     action = models.CharField(max_length=50)
     changes = models.JSONField(default=dict)
     class Meta: verbose_name='Изменение'; verbose_name_plural='История изменений'; ordering=['-at']
+
+
+def normalize_location(value):
+    import unicodedata
+    return ' '.join(unicodedata.normalize('NFKC',value).casefold().replace('ё','е').split())
+
+class LocationReference(models.Model):
+    code=models.CharField('Код из исходного справочника',max_length=40,unique=True)
+    name=models.CharField('Название',max_length=100,unique=True)
+    details=models.JSONField('Дополнительные данные исходного файла',default=dict,blank=True)
+    class Meta:
+        abstract=True
+        ordering=['name']
+    def __str__(self):return self.name
+    @classmethod
+    def match(cls,value):
+        target=normalize_location(value)
+        matches=[record for record in cls.objects.all() if normalize_location(record.name)==target]
+        return matches[0] if len(matches)==1 else None
+
+class DepartureCity(LocationReference):
+    class Meta(LocationReference.Meta):
+        verbose_name='Город вылета'
+        verbose_name_plural='Города вылета'
+
+class Country(LocationReference):
+    class Meta(LocationReference.Meta):
+        verbose_name='Страна'
+        verbose_name_plural='Страны'
