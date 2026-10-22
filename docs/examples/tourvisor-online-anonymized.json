@@ -1,0 +1,120 @@
+{
+  "orders": {
+    "order": [
+      {
+        "id": "EXAMPLE-001",
+        "date": "01.12.2026",
+        "time": "12:00:00",
+        "surname": "Примеров",
+        "name": "Пример",
+        "otch": "Примерович",
+        "address": "[АДРЕС УДАЛЁН]",
+        "phone": "+7 000 000-00-00",
+        "email": "customer@example.test",
+        "comments": "",
+        "operator": "Пример туроператора",
+        "departure": "Город вылета",
+        "country": "Страна",
+        "flydate": "01.12.2026",
+        "nights": 7,
+        "tour": "Название тура",
+        "price": "200000",
+        "currency": "RUB",
+        "operatorlink": "https://operator.example/booking/EXAMPLE",
+        "client_pass_number": "[ДАННЫЕ УДАЛЕНЫ]",
+        "client_pass_issue_date": "01.01.2020",
+        "client_pass_issue_by": "[ОРГАН ВЫДАЧИ]",
+        "client_pass_code": "[ДАННЫЕ УДАЛЕНЫ]",
+        "client_birthday": "01.01.1990",
+        "manual": 1,
+        "tourist": [
+          {
+            "passportseries": "[ДАННЫЕ УДАЛЕНЫ]",
+            "passportnumber": "[ДАННЫЕ УДАЛЕНЫ]",
+            "passportissuedate": "01.01.2020",
+            "passportenddate": "01.01.2030",
+            "passportissuedby": "[ОРГАН ВЫДАЧИ]",
+            "passporttype": "0",
+            "surname": "EXAMPLE",
+            "name": "TEST",
+            "gender": "male",
+            "birthdate": "01.01.1990",
+            "birthcountry": "",
+            "nationality": "Гражданство",
+            "isclient": 0
+          },
+          {
+            "passportseries": "[ДАННЫЕ УДАЛЕНЫ]",
+            "passportnumber": "[ДАННЫЕ УДАЛЕНЫ]",
+            "passportissuedate": "01.01.2020",
+            "passportenddate": "01.01.2030",
+            "passportissuedby": "[ОРГАН ВЫДАЧИ]",
+            "passporttype": "0",
+            "surname": "EXAMPLE",
+            "name": "TEST",
+            "gender": "male",
+            "birthdate": "01.01.1990",
+            "birthcountry": "",
+            "nationality": "Гражданство",
+            "isclient": 0
+          }
+        ],
+        "adult": 2,
+        "child": 0,
+        "infant": 0,
+        "hotel": [
+          {
+            "name": "Пример отеля",
+            "country": "Страна",
+            "region": "Регион",
+            "startdate": "01.12.2026",
+            "nights": "7",
+            "room": "Категория номера",
+            "meal": "Тип питания",
+            "placement": "2 взрослых"
+          }
+        ],
+        "transport": [
+          {
+            "direction": "1",
+            "number": "XX1234",
+            "datefrom": "01.12.2026",
+            "dateto": "01.12.2026",
+            "timefrom": "12:00:00",
+            "timeto": "12:00:00",
+            "aircompany": "Пример авиакомпании",
+            "plane": "Тип самолёта",
+            "terminalfrom": "Аэропорт вылета",
+            "terminalto": "Аэропорт прилёта",
+            "terminalcodefrom": "XXX",
+            "terminalcodeto": "YYY"
+          },
+          {
+            "direction": "2",
+            "number": "XX4321",
+            "datefrom": "08.12.2026",
+            "dateto": "08.12.2026",
+            "timefrom": "12:00:00",
+            "timeto": "12:00:00",
+            "aircompany": "Пример авиакомпании",
+            "plane": "Тип самолёта",
+            "terminalfrom": "Аэропорт вылета",
+            "terminalto": "Аэропорт прилёта",
+            "terminalcodefrom": "XXX",
+            "terminalcodeto": "YYY"
+          }
+        ],
+        "service": [
+          {
+            "name": "Пример услуги",
+            "startdate": "01.12.2026"
+          },
+          {
+            "name": "Пример услуги",
+            "startdate": "01.12.2026"
+          }
+        ]
+      }
+    ]
+  }
+}
