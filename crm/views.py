@@ -29,7 +29,7 @@ class DateRange(forms.Form):
 @permission_required('crm.view_task',raise_exception=True)
 def tasks(request):
     today=timezone.localdate()
-    qs=Task.objects.select_related('customer','contract','employee')
+    qs=Task.objects.select_related('customer','contract__operator','operator','employee').prefetch_related('contract__bookings')
     mode=request.GET.get('period','today')
     if mode=='done':qs=qs.filter(done=True)
     else:

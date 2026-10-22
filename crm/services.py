@@ -2,12 +2,23 @@ from datetime import timedelta
 from django.db import transaction
 from .models import Task, TaskTemplate, Contract
 
+def task_due(contract,template):
+    anchor={'created':contract.date,'start':contract.start,'end':contract.end}[template.anchor]
+    if not anchor:
+        return None
+    # New tasks should not start overdue when the trip is booked at short notice.
+    return max(contract.date,anchor+timedelta(days=template.offset))
+
 @transaction.atomic
-def create_tasks(contract):
-    for template in TaskTemplate.objects.filter(active=True):
-        anchor = {'created':contract.date,'start':contract.start,'end':contract.end}[template.anchor]
-        if anchor:
-            Task.objects.get_or_create(origin_key=f'contract:{contract.pk}:template:{template.pk}',defaults={'template':template,'contract':contract,'customer':contract.customer,'title':template.name,'due':anchor+timedelta(days=template.offset)})
+def create_tasks(contract,templates=None,dates=None):
+    if templates is None:
+        templates=TaskTemplate.objects.filter(active=True)
+    for template in templates:
+        due=(dates or {}).get(template.pk) or task_due(contract,template)
+        if due:
+            Task.objects.get_or_create(origin_key=f'contract:{contract.pk}:template:{template.pk}',defaults={
+                'template':template,'contract':contract,'customer':contract.customer,'title':template.name,'due':due,
+                'description':contract.flights if template.copy_flights else ''})
 
 @transaction.atomic
 def copy_contract(source):
@@ -38,5 +49,5 @@ def repeat_tasks(task,period,count):
             months=task.due.year*12+task.due.month-1+i*(12 if period=='year' else 1)
             year,month=divmod(months,12);month+=1
             due=date(year,month,min(task.due.day,calendar.monthrange(year,month)[1]))
-        copies.append(Task.objects.create(title=task.title,description=task.description,due=due,employee=task.employee,customer=task.customer,contract=task.contract))
+        copies.append(Task.objects.create(title=task.title,description=task.description,due=due,employee=task.employee,customer=task.customer,contract=task.contract,operator=task.operator,booking_number=task.booking_number))
     return copies

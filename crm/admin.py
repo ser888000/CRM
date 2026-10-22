@@ -1,10 +1,14 @@
 from django import forms
 from django.contrib import admin, messages
-from django.contrib.admin.models import LogEntry
+from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
+from django.urls import path
+from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent
+from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod
 from .services import create_tasks, copy_contract
+from .forms import ContractForm, PaymentForm
 
 class AuditedAdmin(admin.ModelAdmin):
     def save_model(self,request,obj,form,change):
@@ -26,26 +30,57 @@ class LineInline(admin.TabularInline):
 class BookingInline(admin.TabularInline):
     model=Booking
     extra=0
+    fields=['number','open_booking']
+    readonly_fields=['open_booking']
+    @admin.display(description='Бронь у туроператора')
+    def open_booking(self,obj):
+        if not obj.pk:return 'Сохраните договор и номер брони'
+        return booking_button(obj.booking_link)
 
-class ContractForm(forms.ModelForm):
-    task_templates = forms.ModelMultipleChoiceField(label='Создать задачи по шаблонам (только при создании)',queryset=TaskTemplate.objects.all(),required=False,widget=forms.CheckboxSelectMultiple)
-    class Meta:
-        model=Contract
-        fields='__all__'
-    def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
-        if not self.instance.pk:self.fields['task_templates'].initial=TaskTemplate.objects.filter(active=True)
-        else:self.fields.pop('task_templates')
+def booking_button(url):
+    from urllib.parse import urlsplit
+    try:
+        if url and urlsplit(url).scheme in ('http','https'):
+            return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">Перейти к брони ТО ↗</a>',url)
+    except ValueError:
+        pass
+    return 'Укажите шаблон ссылки в карточке ТО'
+
+def task_booking_links(task):
+    operator=task.contract.operator if task.contract_id else task.operator
+    if task.booking_number:
+        return booking_button(operator.booking_link(task.booking_number)) if operator else 'Не выбран ТО'
+    if task.contract_id:
+        from django.utils.html import format_html_join
+        return format_html_join(' · ','{}',((booking_button(b.booking_link),) for b in task.contract.bookings.all())) or 'Броней пока нет'
+    return '—'
+
+
+class PaymentInline(admin.TabularInline):
+    model=Payment
+    extra=0
+    fields=['date','kind','amount','method','currency','rate','notes']
+    verbose_name_plural='Финансы по договору'
+    show_change_link=True
 
 @admin.register(Contract)
 class ContractAdmin(AuditedAdmin):
     form=ContractForm
-    def get_fields(self,request,obj=None):
-        fields=super().get_fields(request,obj)
+    def get_form(self,request,obj=None,**kwargs):
+        attrs={}
+        templates=TaskTemplate.objects.all()
         if obj is not None:
-            fields=[field for field in fields if field != 'task_templates']
-        return fields
-    inlines=[LineInline,BookingInline]
+            templates=templates.exclude(task__contract=obj)
+        for template in templates:
+            attrs[f'task_due_{template.pk}']=forms.DateField(label=f'Срок: {template.name}',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':template.anchor,'data-task-offset':template.offset,'data-task-id':template.pk}))
+        kwargs['form']=type('ContractWithTaskDates',(ContractForm,),attrs)
+        return super().get_form(request,obj,**kwargs)
+    readonly_fields=['financial_summary']
+    @admin.display(description='Итоги финансов')
+    def financial_summary(self,obj):
+        if not obj or not obj.pk:return 'Итоги появятся после сохранения договора'
+        return format_html('Сумма: {} ₽ · Оплачено: {} ₽ · Долг: {} ₽ · Себестоимость: {} ₽ · Доход: {} ₽',obj.amount,obj.paid,obj.debt,obj.cost,obj.profit)
+    inlines=[LineInline,BookingInline,PaymentInline]
     list_display=['id','number','date','customer','operator','start','end','amount','paid','cost','profit']
     list_filter=['operator','country','payment_method','date','start']
     search_fields=['number','customer__name','bookings__number','hotel']
@@ -53,12 +88,12 @@ class ContractAdmin(AuditedAdmin):
     actions=['generate_tasks','duplicate']
     @admin.action(description='Добавить задачи по активным шаблонам')
     def generate_tasks(self,request,queryset):
-        if not request.user.has_perm('crm.add_task'): raise PermissionError
+        if not request.user.has_perm('crm.add_task'): raise PermissionDenied
         for c in queryset: create_tasks(c)
         self.message_user(request,'Недостающие задачи добавлены. Существующие не изменены.')
     @admin.action(description='Копировать договор без оплат, броней и задач')
     def duplicate(self,request,queryset):
-        if not request.user.has_perm('crm.add_contract'): raise PermissionError
+        if not request.user.has_perm('crm.add_contract'): raise PermissionDenied
         if queryset.count()!=1:
             self.message_user(request,'Выберите один договор',messages.ERROR);return
         c=copy_contract(queryset.get())
@@ -66,13 +101,11 @@ class ContractAdmin(AuditedAdmin):
         self.message_user(request,format_html('Создан <a href="{}">договор №{}</a>',reverse('admin:crm_contract_change',args=[c.pk]),c.pk))
     def save_related(self,request,form,formsets,change):
         super().save_related(request,form,formsets,change)
-        if not change:
-            from datetime import timedelta
-            for template in form.cleaned_data.get('task_templates',[]):
-                anchor={'created':form.instance.date,'start':form.instance.start,'end':form.instance.end}[template.anchor]
-                if anchor:
-                    Task.objects.get_or_create(origin_key=f'contract:{form.instance.pk}:template:{template.pk}',defaults={'template':template,'contract':form.instance,'customer':form.instance.customer,'title':template.name,'due':anchor+timedelta(days=template.offset)})
-                else:self.message_user(request,f'Для задачи «{template.name}» не задана дата тура; создайте её вручную.',messages.WARNING)
+        selected=form.cleaned_data.get('task_templates',[])
+        if selected and not request.user.has_perm('crm.add_task'):
+            raise PermissionDenied
+        dates={t.pk:form.cleaned_data.get(f'task_due_{t.pk}') for t in selected}
+        create_tasks(form.instance,templates=selected,dates=dates)
         for fs in formsets:
             for obj in fs.new_objects + fs.changed_objects:
                 instance=obj[0] if isinstance(obj,tuple) else obj
@@ -94,12 +127,33 @@ class TouristAdmin(AuditedAdmin):
 @admin.register(Operator)
 class OperatorAdmin(AuditedAdmin):
     search_fields=['name']
+    list_display=['name','booking_url_template']
+
+@admin.register(ContractType,PaymentMethod)
+class ReferenceAdmin(AuditedAdmin):
+    search_fields=['name']
+    list_display=['name']
 @admin.register(Payment)
 class PaymentAdmin(AuditedAdmin):
-    list_display=['date','contract','kind','amount','method']
-    list_filter=['kind','method','date']
-    autocomplete_fields=['contract']
+    form=PaymentForm
+    fields=['customer','contract','date','kind','amount','method','currency','rate','notes']
+    list_display=['date','customer_name','contract','kind','amount','method','rate']
+    list_filter=['kind','method','date','contract__customer']
     search_fields=['contract__number','contract__customer__name']
+    list_select_related=['contract__customer','method']
+    @admin.display(description='Заказчик',ordering='contract__customer__name')
+    def customer_name(self,obj):return obj.contract.customer
+    def get_urls(self):
+        return [path('contracts-for-customer/',self.admin_site.admin_view(self.contracts_for_customer),name='crm_payment_contracts_for_customer')]+super().get_urls()
+    def contracts_for_customer(self,request):
+        if not (self.has_add_permission(request) or self.has_change_permission(request)) or not request.user.has_perm('crm.view_contract'):
+            raise PermissionDenied
+        contracts=Contract.objects.select_related('customer').order_by('-date','-pk')
+        customer=request.GET.get('customer')
+        if customer:
+            if not customer.isdigit():return JsonResponse({'contracts':[]})
+            contracts=contracts.filter(customer_id=customer)
+        return JsonResponse({'contracts':[{'id':c.pk,'label':f'{c} · {c.customer}'} for c in contracts]})
 class TaskForm(forms.ModelForm):
     repeat = forms.ChoiceField(label='Повтор',choices=[('','Без повтора'),('day','Каждый день'),('week','Каждую неделю'),('month','Каждый месяц'),('year','Каждый год')],required=False)
     occurrences = forms.IntegerField(label='Всего задач (включая первую)',min_value=1,max_value=366,initial=1,help_text='Все задачи создаются сразу; максимум 366 за один раз.')
@@ -126,15 +180,24 @@ class TaskAdmin(AuditedAdmin):
             copies=repeat_tasks(obj,form.cleaned_data['repeat'],form.cleaned_data['occurrences'])
             for copy in copies:
                 AuditEvent.objects.create(actor=request.user,object_type='crm.Task',object_id=str(copy.pk),action='created_repeat')
-    list_display=['title','due','done','employee','customer','contract']
+    list_display=['title','due','done','employee','customer','contract','tour_operator','booking_numbers','booking_links']
+    readonly_fields=['tour_operator','booking_numbers','booking_links']
     list_filter=['done','due','employee']
     list_editable=['done']
     exclude=['template']
     autocomplete_fields=['contract','customer']
-    search_fields=['title','description']
+    search_fields=['title','description','booking_number','contract__bookings__number','contract__operator__name']
+    @admin.display(description='Туроператор')
+    def tour_operator(self,obj):return obj.contract.operator if obj.contract_id else (obj.operator or '—')
+    @admin.display(description='Брони ТО')
+    def booking_numbers(self,obj):
+        return obj.booking_number or (', '.join(obj.contract.bookings.values_list('number',flat=True)) if obj.contract_id else '—')
+    @admin.display(description='Перейти к брони')
+    def booking_links(self,obj):return task_booking_links(obj)
 @admin.register(TaskTemplate)
 class TemplateAdmin(AuditedAdmin):
-    list_display=['name','anchor','offset','active']
+    list_display=['name','anchor','offset','order','copy_flights','active']
+    list_editable=['order']
 @admin.register(AuditEvent)
 class AuditAdmin(admin.ModelAdmin):
     list_display=['at','actor','object_type','object_id','action']

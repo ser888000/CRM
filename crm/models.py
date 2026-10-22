@@ -1,4 +1,6 @@
 from decimal import Decimal
+from urllib.parse import quote, urlsplit
+from string import Formatter
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -16,8 +18,49 @@ class Customer(models.Model):
     class Meta: verbose_name='Заказчик'; verbose_name_plural='Заказчики'
     def __str__(self): return self.name
 
+def booking_url(template,number):
+    if not template or not number:
+        return ''
+    try:
+        url=template.format(booking=quote(number,safe=''))
+        parts=urlsplit(url)
+        if parts.scheme not in ('https','http') or not parts.hostname or parts.username or parts.password:
+            return ''
+        return url
+    except (ValueError,KeyError,IndexError,AttributeError):
+        return ''
+
+class NamedReference(models.Model):
+    name=models.CharField('Название',max_length=100,unique=True)
+    class Meta:
+        abstract=True
+        ordering=['name']
+    def __str__(self): return self.name
+
+class ContractType(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name='Тип договора'
+        verbose_name_plural='Типы договоров'
+
+class PaymentMethod(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name='Способ оплаты'
+        verbose_name_plural='Способы оплаты'
+
 class Operator(models.Model):
     name = models.CharField('Название',max_length=200,unique=True)
+    booking_url_template = models.CharField('Шаблон ссылки на бронь',max_length=1500,blank=True,help_text='Например: https://operator.example/booking/{booking}. Вместо {booking} будет подставлен номер брони. Нужна ссылка именно для этого ТО.')
+    def clean(self):
+        super().clean()
+        if self.booking_url_template:
+            try:
+                fields=[field for _,field,_,_ in Formatter().parse(self.booking_url_template) if field is not None]
+                if not fields or any(field!='booking' for field in fields) or not booking_url(self.booking_url_template,'TEST'):
+                    raise ValueError
+            except (ValueError,KeyError,IndexError,AttributeError):
+                raise ValidationError({'booking_url_template':'Укажите HTTP(S)-ссылку с подстановкой {booking}.'})
+    def booking_link(self,number):
+        return booking_url(self.booking_url_template,number)
     class Meta: verbose_name='Туроператор'; verbose_name_plural='Туроператоры'
     def __str__(self): return self.name
 
@@ -39,7 +82,7 @@ class Contract(models.Model):
     date = models.DateField('Дата договора',default=timezone.localdate)
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,verbose_name='Заказчик')
     operator = models.ForeignKey(Operator,on_delete=models.PROTECT,verbose_name='Туроператор')
-    contract_type = models.CharField('Тип договора',max_length=100,blank=True)
+    contract_type = models.ForeignKey(ContractType,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Тип договора')
     country = models.CharField('Страна',max_length=100,blank=True)
     region = models.CharField('Регион',max_length=150,blank=True)
     departure = models.CharField('Город вылета',max_length=150,blank=True)
@@ -52,7 +95,7 @@ class Contract(models.Model):
     insurance = models.CharField('Страховка',max_length=200,blank=True)
     services = models.TextField('Дополнительные услуги',blank=True)
     flights = models.TextField('Рейсы туда и обратно',blank=True)
-    payment_method = models.CharField('Основной способ оплаты',max_length=100,blank=True)
+    payment_method = models.ForeignKey(PaymentMethod,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Основной способ оплаты')
     operator_due = models.DateField('Срок оплаты ТО',null=True,blank=True)
     operator_paid = models.DateField('Дата полной оплаты ТО',null=True,blank=True)
     metrika_id = models.CharField('ID клиента Метрики',max_length=100,blank=True)
@@ -80,7 +123,15 @@ class Booking(models.Model):
     contract = models.ForeignKey(Contract,on_delete=models.CASCADE,related_name='bookings')
     number = models.CharField('Номер брони ТО',max_length=150)
     url = models.URLField('Ссылка на бронь',blank=True)
-    class Meta: verbose_name='Бронь ТО'; verbose_name_plural='Брони ТО'
+    @property
+    def booking_link(self):
+        url=self.contract.operator.booking_link(self.number) or self.url
+        try:
+            return url if urlsplit(url).scheme in ('http','https') else ''
+        except ValueError:
+            return ''
+    def __str__(self): return self.number
+    class Meta: verbose_name='Бронь ТО' ; verbose_name_plural='Брони ТО'
 
 class ContractLine(models.Model):
     contract = models.ForeignKey(Contract,on_delete=models.CASCADE,related_name='lines')
@@ -95,9 +146,9 @@ class Payment(models.Model):
     kind = models.CharField('Операция',max_length=30,choices=KINDS)
     date = models.DateField('Дата',default=timezone.localdate)
     amount = models.DecimalField('Сумма, ₽',max_digits=14,decimal_places=2,validators=[MinValueValidator(Decimal('0.01'))])
-    method = models.CharField('Способ оплаты',max_length=100)
+    method = models.ForeignKey(PaymentMethod,on_delete=models.PROTECT,verbose_name='Способ оплаты')
     currency = models.CharField('Справочно: валюта оплаты ТО',max_length=3,blank=True)
-    rate = models.DecimalField('Справочно: курс',max_digits=14,decimal_places=6,null=True,blank=True,validators=[MinValueValidator(Decimal('0.000001'))])
+    rate = models.DecimalField('Справочно: курс',max_digits=14,decimal_places=2,null=True,blank=True,validators=[MinValueValidator(Decimal('0.01'))])
     notes = models.TextField('Примечание',blank=True)
     class Meta: verbose_name='Финансовая операция'; verbose_name_plural='Финансы'
     def __str__(self): return f'{self.get_kind_display()}: {self.amount} ₽'
@@ -107,7 +158,12 @@ class TaskTemplate(models.Model):
     anchor = models.CharField('От какой даты',max_length=20,choices=[('created','Создание договора'),('start','Начало тура'),('end','Окончание тура')])
     offset = models.IntegerField('Смещение в днях',default=0)
     active = models.BooleanField('Добавлять по умолчанию',default=True)
-    class Meta: verbose_name='Шаблон задачи'; verbose_name_plural='Шаблоны задач'
+    order = models.PositiveIntegerField('Порядок в списке',default=0)
+    copy_flights = models.BooleanField('Включить рейсы договора в описание',default=False)
+    class Meta:
+        verbose_name='Шаблон задачи'
+        verbose_name_plural='Шаблоны задач'
+        ordering=['order','pk']
     def __str__(self): return self.name
 
 class Task(models.Model):
@@ -118,9 +174,21 @@ class Task(models.Model):
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Заказчик')
     contract = models.ForeignKey(Contract,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Договор')
     employee = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Сотрудник')
+    operator = models.ForeignKey(Operator,on_delete=models.PROTECT,null=True,blank=True,verbose_name='ТО (если задача без договора)')
+    booking_number = models.CharField('Номер брони ТО (необязательно)',max_length=150,blank=True)
     template = models.ForeignKey(TaskTemplate,on_delete=models.SET_NULL,null=True,blank=True)
     origin_key = models.CharField(max_length=100,null=True,blank=True,unique=True,editable=False)
     class Meta: verbose_name='Задача'; verbose_name_plural='Задачи'; ordering=['done','due','pk']
+    @property
+    def tour_operator(self):
+        return self.contract.operator if self.contract_id else self.operator
+    @property
+    def booking_entries(self):
+        if self.booking_number:
+            return [(self.booking_number,self.tour_operator.booking_link(self.booking_number) if self.tour_operator else '')]
+        if self.contract_id:
+            return [(b.number,b.booking_link) for b in self.contract.bookings.all()]
+        return []
     def __str__(self): return self.title
 
 class AuditEvent(models.Model):
