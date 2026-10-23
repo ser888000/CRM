@@ -48,6 +48,6 @@ class LocationTests(TestCase):
         response=self.client.get('/admin/crm/contract/add/')
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'crm/location_input.js')
-        self.assertContains(response,'crm/location_input.css')
+        self.assertContains(response,'crm/location_input_v2.css')
         for url in ['/admin/crm/country/','/admin/crm/departurecity/']:
             self.assertEqual(self.client.get(url).status_code,200)

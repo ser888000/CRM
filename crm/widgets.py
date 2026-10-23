@@ -13,4 +13,4 @@ class LocationInput(TextInput):
         return context
     class Media:
         js=['crm/location_input.js']
-        css={'all':['crm/location_input.css']}
+        css={'all':['crm/location_input_v2.css']}

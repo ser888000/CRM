@@ -1,1 +1,3 @@
 .crm-location-input{display:inline-block;position:relative;max-width:100%}.crm-location-options{position:absolute;top:100%;left:0;min-width:100%;max-height:240px;overflow-y:auto;background:var(--body-bg,#fff);color:var(--body-fg,#222);border:1px solid var(--border-color,#aaa);box-shadow:0 3px 8px #0002;z-index:1000;box-sizing:border-box}.crm-location-options[hidden]{display:none}.crm-location-options [role=option]{display:block;padding:8px 12px;cursor:pointer;white-space:nowrap}.crm-location-options [role=option]:hover,.crm-location-options [aria-selected=true]{background:var(--selected-row,#dceef5)}
+/* Django admin clips absolutely positioned suggestions inside form rows. */
+.form-row.field-country,.form-row.field-departure{overflow:visible}
