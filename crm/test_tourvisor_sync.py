@@ -40,6 +40,17 @@ class SyncTests(TestCase):
                 order=copy.deepcopy(self.order);change(order)
                 sections=compare_order(self.c,normalize_order(order))
                 self.assertEqual([s['key'] for s in sections if s['changed']],[key])
+    def test_tourist_and_flight_labels_contain_only_field_names(self):
+        order=copy.deepcopy(self.order)
+        order['tourist'][0]['passportenddate']='01.01.2031'
+        for flight in order['transport']:
+            flight['number']+=' NEW'
+        sections={s['key']:s for s in compare_order(self.c,normalize_order(order))}
+        from .models import Tourist
+        self.assertEqual([c['label'] for c in sections['tourists']['changes']],
+                         [str(Tourist._meta.get_field('expires').verbose_name)])
+        self.assertEqual([c['label'] for c in sections['transport']['changes']],['Рейс','Рейс'])
+
     def test_reordered_lists_and_service_dates_are_not_changes(self):
         order=copy.deepcopy(self.order)
         for key in ('tourist','transport','service'):order[key].reverse()

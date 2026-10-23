@@ -53,8 +53,7 @@ def array_diff(old,new,group):
     for index,(a,b) in enumerate(pairs):
         for key in dict.fromkeys([*a,*b]):
             label='Отель' if group=='hotel' and key=='name' else LABELS.get(key,key)
-            if group=='transport':label=f"{b.get('number') or a.get('number') or f'Рейс {index+1}'} · {label}"
-            elif group=='hotel' and max(len(old),len(new))>1:label=f'Отель {index+1} · {label}'
+            if group=='hotel' and max(len(old),len(new))>1:label=f'Отель {index+1} · {label}'
             add_change(changes,label,a.get(key),b.get(key))
     return changes
 
@@ -84,13 +83,13 @@ def compare_order(existing,normalized):
         if old is None:
             add_change(changes,'Добавлен турист',None,name)
             for field,value in new.items():
-                if value not in ('',None):add_change(changes,f'{name} · {Tourist._meta.get_field(field).verbose_name}',None,value)
+                if value not in ('',None):add_change(changes,Tourist._meta.get_field(field).verbose_name,None,value)
         elif new is None:add_change(changes,'Удалён из импортированного состава',name,None)
         else:
             for field,value in new.items():
                 model_field=Tourist._meta.get_field(field)
                 choices=dict(model_field.choices or [])
-                add_change(changes,f'{name} · {model_field.verbose_name}',choices.get(getattr(old,field),getattr(old,field)),choices.get(value,value))
+                add_change(changes,model_field.verbose_name,choices.get(getattr(old,field),getattr(old,field)),choices.get(value,value))
     section('tourists',changes)
     for group in ('hotel','transport','service'):
         previous=[dict(row) for row in existing.source_data.get(group,[])] if existing else []
