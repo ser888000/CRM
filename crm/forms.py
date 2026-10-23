@@ -1,7 +1,7 @@
 from django import forms
-from .models import Contract,TaskTemplate,Payment,Customer,DepartureCity,Country
+from .models import Contract,TaskTemplate,Payment,Customer,DepartureCity,Country,Currency
 from .services import task_due
-from .widgets import LocationInput
+from .widgets import LocationInput,MoneyInput
 
 class ContractForm(forms.ModelForm):
     task_templates=forms.ModelMultipleChoiceField(label='Создать задачи (снимите ненужные)',queryset=TaskTemplate.objects.all(),required=False,widget=forms.CheckboxSelectMultiple)
@@ -11,6 +11,7 @@ class ContractForm(forms.ModelForm):
         widgets={'departure':LocationInput(DepartureCity),'country':LocationInput(Country)}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['source_currency']=forms.ChoiceField(label='Валюта предложения',choices=[(c.code,str(c)) for c in Currency.objects.all()],initial='RUB')
         if self.instance.pk:
             self.fields['task_templates'].queryset=TaskTemplate.objects.exclude(task__contract=self.instance)
             self.fields['task_templates'].initial=[]
@@ -42,9 +43,11 @@ class PaymentForm(forms.ModelForm):
     class Meta:
         model=Payment
         fields='__all__'
-        widgets={'rate':forms.NumberInput(attrs={'step':'0.01'})}
+        widgets={'rate':MoneyInput(),'amount':MoneyInput()}
+        localized_fields=['amount','rate']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['currency']=forms.ChoiceField(label='Справочно: валюта оплаты ТО',required=False,choices=[('','---------')]+[(c.code,str(c)) for c in Currency.objects.all()])
         customer=None
         if self.is_bound:
             customer=self.data.get(self.add_prefix('customer'))

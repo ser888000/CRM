@@ -18,7 +18,7 @@ def create_tasks(contract,templates=None,dates=None):
         if due:
             Task.objects.get_or_create(origin_key=f'contract:{contract.pk}:template:{template.pk}',defaults={
                 'template':template,'contract':contract,'customer':contract.customer,'title':template.name,'due':due,
-                'description':contract.flights if template.copy_flights else ''})
+                'description':flight_description(contract) if template.copy_flights else ''})
 
 @transaction.atomic
 def copy_contract(source):
@@ -26,6 +26,10 @@ def copy_contract(source):
     copy = Contract.objects.get(pk=source.pk)
     copy.pk = None
     copy.number = ''
+    copy.tourvisor_id = None
+    copy.tourvisor_time = ''
+    copy.imported_at = None
+    copy.source_data = {}
     copy.date = timezone.localdate()
     copy.operator_paid = None
     copy.save()
@@ -51,3 +55,11 @@ def repeat_tasks(task,period,count):
             due=date(year,month,min(task.due.day,calendar.monthrange(year,month)[1]))
         copies.append(Task.objects.create(title=task.title,description=task.description,due=due,employee=task.employee,customer=task.customer,contract=task.contract,operator=task.operator,booking_number=task.booking_number))
     return copies
+
+
+def flight_description(contract):
+    lines=[]
+    for flight in contract.source_data.get('transport',[]):
+        lines.append(' · '.join(str(flight.get(k,'')) for k in ('number','datefrom','timefrom','terminalfrom','terminalto','dateto','timeto') if flight.get(k)))
+    if contract.flights:lines.append(contract.flights)
+    return '\n'.join(lines)

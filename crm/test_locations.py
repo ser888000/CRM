@@ -20,7 +20,7 @@ class LocationTests(TestCase):
     def test_text_fields_support_canonical_and_unlisted_names(self):
         customer=Customer.objects.create(name='Клиент')
         operator=Operator.objects.create(name='ТО')
-        data={'customer':customer.pk,'operator':operator.pk,'date':'2026-10-22','departure':' москва ','country':'египет'}
+        data={'customer':customer.pk,'operator':operator.pk,'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-22','departure':' москва ','country':'египет'}
         form=ContractForm(data=data)
         self.assertTrue(form.is_valid(),form.errors)
         contract=form.save()

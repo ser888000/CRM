@@ -56,7 +56,7 @@ class WorkflowTests(TestCase):
         template=TaskTemplate.objects.create(name='Проверка',anchor='start',offset=-1)
         self.client.force_login(self.user)
         response=self.client.post('/admin/crm/contract/add/',{
-            'date':'2026-10-21','customer':self.customer.pk,'operator':self.operator.pk,
+            'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-21','customer':self.customer.pk,'operator':self.operator.pk,
             'start':'2026-11-10','end':'2026-11-20','task_templates':[template.pk],f'task_due_{template.pk}':'2026-11-09',
             'lines-TOTAL_FORMS':'0','lines-INITIAL_FORMS':'0','lines-MIN_NUM_FORMS':'0','lines-MAX_NUM_FORMS':'1000',
             'payments-TOTAL_FORMS':'0','payments-INITIAL_FORMS':'0','payments-MIN_NUM_FORMS':'0','payments-MAX_NUM_FORMS':'1000',
@@ -129,7 +129,7 @@ class WorkflowTests(TestCase):
     def test_contract_edit_can_add_payment_inline(self):
         self.client.force_login(self.user)
         response=self.client.post(f'/admin/crm/contract/{self.c.pk}/change/',{
-            'date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'start':'2026-11-10','end':'2026-11-20',
+            'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'start':'2026-11-10','end':'2026-11-20',
             'lines-TOTAL_FORMS':'0','lines-INITIAL_FORMS':'0','lines-MIN_NUM_FORMS':'0','lines-MAX_NUM_FORMS':'1000',
             'bookings-TOTAL_FORMS':'0','bookings-INITIAL_FORMS':'0','bookings-MIN_NUM_FORMS':'0','bookings-MAX_NUM_FORMS':'1000',
             'payments-TOTAL_FORMS':'1','payments-INITIAL_FORMS':'0','payments-MIN_NUM_FORMS':'0','payments-MAX_NUM_FORMS':'1000',
@@ -146,7 +146,8 @@ class WorkflowTests(TestCase):
         self.payment('customer',500)
         response=self.client.get(f'/admin/crm/payment/{Payment.objects.get().pk}/change/')
         self.assertEqual(response.status_code,200)
-        self.assertContains(response,'step="0.01"')
+        self.assertContains(response,'name="rate"')
+        self.assertEqual(Payment._meta.get_field('rate').decimal_places,2)
 
     def test_task_list_shows_operator_booking_and_link(self):
         self.operator.booking_url_template='https://example.test/{booking}';self.operator.save()
@@ -165,7 +166,7 @@ class WorkflowTests(TestCase):
         template=TaskTemplate.objects.create(name='Проверка',anchor='start',offset=-1)
         request=RequestFactory().get('/admin/crm/contract/add/');request.user=self.user
         form_class=ContractAdmin(Contract,site).get_form(request)
-        form=form_class(data={'date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'task_templates':[template.pk]})
+        form=form_class(data={'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'task_templates':[template.pk]})
         self.assertFalse(form.is_valid())
         self.assertIn(f'task_due_{template.pk}',form.errors)
 

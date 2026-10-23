@@ -6,7 +6,7 @@ from django.shortcuts import render,redirect
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django import forms
-from .models import Contract, Task, AuditEvent
+from .models import Contract, Task, AuditEvent, Payment, Customer, PaymentMethod
 
 @login_required
 @permission_required('crm.view_contract',raise_exception=True)
@@ -20,7 +20,7 @@ def contracts(request):
         if dateform.cleaned_data['end']:qs=qs.filter(date__lte=dateform.cleaned_data['end'])
     rows=list(qs)
     totals={k:sum((getattr(c,k) for c in rows),Decimal('0')) for k in ['amount','paid','cost','profit','debt']}
-    return render(request,'crm/contracts.html',{'rows':rows,'totals':totals,'dateform':dateform})
+    return render(request,'crm/contracts.html',{'rows':rows,'totals':totals,'count':len(rows),'dateform':dateform})
 class DateRange(forms.Form):
     start=forms.DateField(required=False)
     end=forms.DateField(required=False)
@@ -32,7 +32,7 @@ def tasks(request):
     qs=Task.objects.select_related('customer','contract__operator','operator','employee').prefetch_related('contract__bookings')
     mode=request.GET.get('period','today')
     if mode=='done':qs=qs.filter(done=True)
-    else:
+    elif mode!='all':
         qs=qs.filter(done=False)
         if mode=='overdue':qs=qs.filter(due__lt=today)
         elif mode=='future':qs=qs.filter(due__gt=today)
@@ -58,3 +58,24 @@ def reschedule(request):
         task.due=due;task.save(update_fields=['due'])
         AuditEvent.objects.create(actor=request.user,object_type='crm.Task',object_id=str(task.pk),action='rescheduled',changes={'due':{'old':str(old),'new':str(due)}})
     return redirect('tasks')
+
+
+@login_required
+@permission_required('crm.view_payment',raise_exception=True)
+def finances(request):
+    qs=Payment.objects.select_related('contract__customer','contract__operator','method').order_by('-date','-pk')
+    for param,lookup in [('customer','contract__customer__name__icontains'),('number','contract__number__icontains'),('operator','contract__operator__name__icontains'),('method','method__name__icontains')]:
+        if request.GET.get(param):qs=qs.filter(**{lookup:request.GET[param]})
+    kind=request.GET.get('kind')
+    if kind in dict(Payment.KINDS):qs=qs.filter(kind=kind)
+    f=DateRange(request.GET)
+    if f.is_valid():
+        if f.cleaned_data['start']:qs=qs.filter(date__gte=f.cleaned_data['start'])
+        if f.cleaned_data['end']:qs=qs.filter(date__lte=f.cleaned_data['end'])
+    rows=list(qs)
+    incoming=outgoing=Decimal('0')
+    for payment in rows:
+        payment.incoming=payment.amount if payment.kind in ('customer','operator_refund') else Decimal('0')
+        payment.outgoing=payment.amount if payment.kind in ('operator','customer_refund') else Decimal('0')
+        incoming+=payment.incoming;outgoing+=payment.outgoing
+    return render(request,'crm/finances.html',{'rows':rows,'count':len(rows),'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'dateform':f,'kinds':Payment.KINDS})

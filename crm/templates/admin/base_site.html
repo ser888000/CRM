@@ -1,3 +1,3 @@
 {% extends "admin/base.html" %}
 {% block branding %}<div id="site-name"><a href="{% url 'contracts' %}">АБОРИГЕН-ТУР · CRM</a></div>{% endblock %}
-{% block nav-global %}<nav aria-label="Разделы CRM" style="padding:10px;display:flex;gap:18px;flex-wrap:wrap"><a href="{% url 'contracts' %}">Договоры: таблица</a><a href="{% url 'tasks' %}">Задачи</a><a href="{% url 'admin:crm_customer_changelist' %}">Заказчики</a><a href="{% url 'admin:crm_payment_changelist' %}">Финансы</a><a href="{% url 'admin:index' %}">Справочники и управление</a></nav>{% endblock %}
+{% block nav-global %}<nav aria-label="Разделы CRM" style="padding:10px;display:flex;gap:18px;flex-wrap:wrap"><a href="{% url 'contracts' %}">Договоры: таблица</a><a href="{% url 'tasks' %}">Задачи</a><a href="{% url 'admin:crm_customer_changelist' %}">Заказчики</a><a href="{% url 'finances' %}">Финансы</a><a href="{% url 'admin:index' %}">Справочники и управление</a></nav>{% endblock %}

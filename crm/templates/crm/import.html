@@ -1,0 +1,16 @@
+{% extends 'crm/base.html' %}{% load money %}{% block content %}
+<h1>Импорт онлайн-заявки Турвизора</h1><p>Обращения и платежи не импортируются. Загрузка показывает предпросмотр и не создаёт договор.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="lookup">{{ lookup.as_p }}<button>Загрузить предпросмотр</button></form>
+{% if preview %}
+<h2>{% if existing %}Обновление договора {{ existing }}{% else %}Новый договор {{ preview.contract.number }}{% endif %}</h2>
+<p>Дата: {{ preview.contract.date|date:'d.m.Y' }} · Заказчик: {{ preview.customer.name }} · ТО: {{ preview.operator }} · Стоимость: {{ preview.price|money }} ₽</p>
+{% if comparison %}<h3>Изменения основных полей</h3><table><tr><th>Поле</th><th>Сейчас</th><th>Турвизор</th></tr>{% for label,old,new in comparison %}<tr><td>{{ label }}</td><td>{{ old|default_if_none:'—' }}</td><td>{{ new|default_if_none:'—' }}</td></tr>{% endfor %}</table>{% endif %}
+<details><summary>Заказчик: проверить полученные данные</summary><table>{% for key,value in preview.customer.items %}<tr><th>{{ key }}</th><td>{{ value|default_if_none:'—' }}</td></tr>{% endfor %}</table></details>
+<details><summary>Туристы ({{ preview.tourists|length }})</summary>{% for key,tourist in preview.tourists %}<table>{% for field,value in tourist.items %}<tr><th>{{ field }}</th><td>{{ value|default_if_none:'—' }}</td></tr>{% endfor %}</table>{% endfor %}</details>
+<details><summary>Проживание ({{ preview.hotel|length }})</summary>{% for hotel in preview.hotel %}<table>{% for field,value in hotel.items %}<tr><th>{{ field }}</th><td>{{ value }}</td></tr>{% endfor %}</table>{% endfor %}</details>
+<details><summary>Перелёты ({{ preview.transport|length }})</summary>{% for flight in preview.transport %}<table>{% for field,value in flight.items %}<tr><th>{{ field }}</th><td>{{ value }}</td></tr>{% endfor %}</table>{% endfor %}</details>
+<p>Услуги: {% for service in preview.service %}{{ service.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+{% if existing %}<p><strong>Ни одна группа обновления не выбрана автоматически.</strong> Платежи, себестоимость, задачи, брони ТО и ваши текстовые дополнения сохраняются. Выбранная стоимость будет приведена к сумме Турвизора отдельной строкой корректировки.</p><details><summary>Текущие туристы и ранее импортированные данные</summary><p>{% for line in existing.lines.all %}{% if line.tourist %}{{ line.tourist.name }} · {{ line.tourist.birthday|date:'d.m.Y' }}<br>{% endif %}{% endfor %}</p><pre style="white-space:pre-wrap">{{ existing.source_data }}</pre></details>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm">{{ confirm.as_p }}<button>{% if existing %}Применить выбранные обновления{% else %}Создать договор{% endif %}</button></form>
+<form method="post" style="margin-top:15px">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button>Отменить импорт</button></form>
+{% endif %}{% endblock %}

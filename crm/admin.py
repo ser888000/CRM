@@ -6,11 +6,17 @@ from django.urls import path
 from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod, DepartureCity, Country
+from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod, DepartureCity, Country, Currency
 from .services import create_tasks, copy_contract
 from .forms import ContractForm, PaymentForm
+from .templatetags.money import money
+from .widgets import MoneyInput
+from django.db import models
+from django.db.models import Sum,Q
+from django.utils.html import format_html_join
 
 class AuditedAdmin(admin.ModelAdmin):
+    formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     def save_model(self,request,obj,form,change):
         old=type(obj).objects.filter(pk=obj.pk).values().first() if change else None
         super().save_model(request,obj,form,change)
@@ -24,6 +30,7 @@ class AuditedAdmin(admin.ModelAdmin):
         for obj in queryset: self.delete_model(request,obj)
 
 class LineInline(admin.TabularInline):
+    formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     model=ContractLine
     extra=1
     autocomplete_fields=['tourist']
@@ -57,6 +64,7 @@ def task_booking_links(task):
 
 
 class PaymentInline(admin.TabularInline):
+    formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     model=Payment
     extra=0
     fields=['date','kind','amount','method','currency','rate','notes']
@@ -65,6 +73,7 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(Contract)
 class ContractAdmin(AuditedAdmin):
+    change_list_template='admin/crm/contract/change_list.html'
     form=ContractForm
     def get_form(self,request,obj=None,**kwargs):
         attrs={}
@@ -75,17 +84,43 @@ class ContractAdmin(AuditedAdmin):
             attrs[f'task_due_{template.pk}']=forms.DateField(label=f'Срок: {template.name}',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':template.anchor,'data-task-offset':template.offset,'data-task-id':template.pk}))
         kwargs['form']=type('ContractWithTaskDates',(ContractForm,),attrs)
         return super().get_form(request,obj,**kwargs)
-    readonly_fields=['financial_summary']
+    readonly_fields=['financial_summary','tourvisor_id','tourvisor_time','imported_at','imported_stays','imported_flights','imported_services','imported_comments']
+    def get_readonly_fields(self,request,obj=None):
+        return list(self.readonly_fields)+(['number','date'] if obj and obj.tourvisor_id else [])
+    @admin.display(description='Проживание из Турвизора')
+    def imported_stays(self,obj):return source_table(obj,'hotel')
+    @admin.display(description='Перелёты из Турвизора (ручные дополнения — поле «Рейсы туда и обратно»)')
+    def imported_flights(self,obj):return source_table(obj,'transport')
+    @admin.display(description='Услуги из Турвизора')
+    def imported_services(self,obj):return ', '.join(str(s.get('name','')) for s in obj.source_data.get('service',[])) or '—'
+    @admin.display(description='Комментарий из Турвизора')
+    def imported_comments(self,obj):return obj.source_data.get('comments','') or '—'
+
     @admin.display(description='Итоги финансов')
     def financial_summary(self,obj):
         if not obj or not obj.pk:return 'Итоги появятся после сохранения договора'
-        return format_html('Сумма: {} ₽ · Оплачено: {} ₽ · Долг: {} ₽ · Себестоимость: {} ₽ · Доход: {} ₽',obj.amount,obj.paid,obj.debt,obj.cost,obj.profit)
+        return format_html('Сумма: {} ₽ · Оплачено: {} ₽ · Долг: {} ₽ · Себестоимость: {} ₽ · Доход: {} ₽',money(obj.amount),money(obj.paid),money(obj.debt),money(obj.cost),money(obj.profit))
     inlines=[LineInline,BookingInline,PaymentInline]
-    list_display=['id','number','date','customer','operator','start','end','amount','paid','cost','profit']
+    list_display=['id','number','date','customer','operator','start','end','display_amount','display_paid','display_cost','display_profit']
     list_filter=['operator','country','payment_method','date','start']
     search_fields=['number','customer__name','bookings__number','hotel']
     autocomplete_fields=['customer','operator']
     actions=['generate_tasks','duplicate']
+    def changelist_view(self,request,extra_context=None):
+        response=super().changelist_view(request,extra_context)
+        if hasattr(response,'context_data') and response.context_data and response.context_data.get('cl'):
+            qs=response.context_data['cl'].queryset
+            values=list(qs)
+            response.context_data['contract_totals']={'count':len(values),**{key:money(sum((getattr(c,key) for c in values),0)) for key in ('amount','paid','debt','cost','profit')}}
+        return response
+    @admin.display(description='Сумма, ₽')
+    def display_amount(self,obj):return money(obj.amount)
+    @admin.display(description='Оплачено, ₽')
+    def display_paid(self,obj):return money(obj.paid)
+    @admin.display(description='Себестоимость, ₽')
+    def display_cost(self,obj):return money(obj.cost)
+    @admin.display(description='Доход, ₽')
+    def display_profit(self,obj):return money(obj.profit)
     @admin.action(description='Добавить задачи по активным шаблонам')
     def generate_tasks(self,request,queryset):
         if not request.user.has_perm('crm.add_task'): raise PermissionDenied
@@ -113,8 +148,8 @@ class ContractAdmin(AuditedAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(AuditedAdmin):
-    list_display=['name','phones','emails']
-    search_fields=['name','phones','emails']
+    list_display=['name','main_phone','main_email','phones','emails']
+    search_fields=['name','main_phone','main_email','phones','emails']
     readonly_fields=['contracts_link']
     @admin.display(description='Договоры заказчика')
     def contracts_link(self,obj):
@@ -135,12 +170,25 @@ class ReferenceAdmin(AuditedAdmin):
     list_display=['name']
 @admin.register(Payment)
 class PaymentAdmin(AuditedAdmin):
+    change_list_template='admin/crm/payment/change_list.html'
     form=PaymentForm
     fields=['customer','contract','date','kind','amount','method','currency','rate','notes']
-    list_display=['date','customer_name','contract','kind','amount','method','rate']
+    list_display=['date','customer_name','contract','kind','incoming_amount','outgoing_amount','method','display_rate']
     list_filter=['kind','method','date','contract__customer']
     search_fields=['contract__number','contract__customer__name']
     list_select_related=['contract__customer','method']
+    @admin.display(description='Поступление, ₽')
+    def incoming_amount(self,obj):return money(obj.amount if obj.kind in ('customer','operator_refund') else 0)
+    @admin.display(description='Расход, ₽')
+    def outgoing_amount(self,obj):return money(obj.amount if obj.kind in ('operator','customer_refund') else 0)
+    @admin.display(description='Курс')
+    def display_rate(self,obj):return money(obj.rate)
+    def changelist_view(self,request,extra_context=None):
+        response=super().changelist_view(request,extra_context)
+        if hasattr(response,'context_data') and response.context_data and response.context_data.get('cl'):
+            qs=response.context_data['cl'].queryset
+            response.context_data['financial_totals']={'count':qs.count(),'incoming':money(qs.filter(kind__in=['customer','operator_refund']).aggregate(s=Sum('amount'))['s'] or 0),'outgoing':money(qs.filter(kind__in=['operator','customer_refund']).aggregate(s=Sum('amount'))['s'] or 0)}
+        return response
     @admin.display(description='Заказчик',ordering='contract__customer__name')
     def customer_name(self,obj):return obj.contract.customer
     def get_urls(self):
@@ -215,3 +263,15 @@ class LocationAdmin(AuditedAdmin):
     list_display=['name','code']
     search_fields=['name','code']
     readonly_fields=['details']
+
+
+SOURCE_LABELS={'name':'Название','country':'Страна','region':'Регион','startdate':'Дата начала','nights':'Ночей','room':'Номер','meal':'Питание','placement':'Размещение','direction':'Направление','number':'Рейс','datefrom':'Дата вылета','dateto':'Дата прилёта','timefrom':'Время вылета','timeto':'Время прилёта','aircompany':'Авиакомпания','plane':'Самолёт','terminalfrom':'Откуда','terminalto':'Куда','terminalcodefrom':'Код аэропорта вылета','terminalcodeto':'Код аэропорта прилёта'}
+def source_table(obj,key):
+    entries=obj.source_data.get(key,[]) if obj else []
+    if not entries:return '—'
+    return format_html_join('', '<div style="margin-bottom:14px">{}</div>',((format_html_join(' · ','<span><b>{}</b>: {}</span>',((SOURCE_LABELS.get(k,k),v) for k,v in entry.items())),) for entry in entries))
+
+@admin.register(Currency)
+class CurrencyAdmin(AuditedAdmin):
+    list_display=['code','name']
+    search_fields=['code','name']

@@ -1,0 +1,23 @@
+[Unit]
+Description=Aborigen Tour CRM (SSH-only test instance)
+After=network.target
+[Service]
+Type=simple
+User=aborigen-crm
+Group=aborigen-crm
+WorkingDirectory=/opt/aborigen-crm
+EnvironmentFile=/etc/aborigen-crm.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/aborigen-crm/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 1 --threads 2 --timeout 60 --max-requests 500 --max-requests-jitter 50
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=aborigen-crm
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/aborigen-crm
+[Install]
+WantedBy=multi-user.target

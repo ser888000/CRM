@@ -14,3 +14,11 @@ class LocationInput(TextInput):
     class Media:
         js=['crm/location_input.js']
         css={'all':['crm/location_input_v2.css']}
+
+class MoneyInput(TextInput):
+    def format_value(self,value):
+        from decimal import Decimal
+        from .templatetags.money import money
+        if isinstance(value,(Decimal,int,float)):
+            return money(value)
+        return super().format_value(value)

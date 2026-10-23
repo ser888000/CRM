@@ -9,12 +9,21 @@ from django.db.models import Sum
 from django.utils import timezone
 
 class Customer(models.Model):
+    surname=models.CharField('Фамилия',max_length=100,blank=True)
+    given_name=models.CharField('Имя',max_length=100,blank=True)
+    patronymic=models.CharField('Отчество',max_length=100,blank=True)
+    main_phone=models.CharField('Основной телефон',max_length=100,blank=True)
+    main_email=models.CharField('Основной email',max_length=250,blank=True)
+    passport_number=models.CharField('Паспорт РФ: серия и номер',max_length=100,blank=True)
+    passport_issued=models.DateField('Паспорт РФ: дата выдачи',null=True,blank=True)
+    passport_issued_by=models.CharField('Паспорт РФ: кем выдан',max_length=500,blank=True)
+    passport_code=models.CharField('Паспорт РФ: код подразделения',max_length=50,blank=True)
     name = models.CharField('ФИО заказчика',max_length=250)
     birthday = models.DateField('Дата рождения',null=True,blank=True)
     passport = models.TextField('Паспортные данные',blank=True)
     address = models.TextField('Адрес регистрации',blank=True)
-    phones = models.TextField('Телефоны (по одному в строке)',blank=True)
-    emails = models.TextField('Email (по одному в строке)',blank=True)
+    phones = models.TextField('Дополнительные телефоны (по одному в строке)',blank=True)
+    emails = models.TextField('Дополнительные email (по одному в строке)',blank=True)
     class Meta: verbose_name='Заказчик'; verbose_name_plural='Заказчики'
     def __str__(self): return self.name
 
@@ -65,6 +74,11 @@ class Operator(models.Model):
     def __str__(self): return self.name
 
 class Tourist(models.Model):
+    surname=models.CharField('Фамилия по паспорту',max_length=100,blank=True)
+    given_name=models.CharField('Имя по паспорту',max_length=100,blank=True)
+    passport_type=models.CharField('Тип паспорта',max_length=1,choices=[('0','Загранпаспорт'),('1','Российский')],blank=True)
+    birthcountry=models.CharField('Страна рождения',max_length=100,blank=True)
+    is_customer=models.BooleanField('Заказчик по данным Турвизора',default=False)
     name = models.CharField('ФИО по паспорту',max_length=250)
     customer = models.ForeignKey(Customer,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Карточка заказчика')
     gender = models.CharField('Пол',max_length=10,choices=[('male','Мужской'),('female','Женский')],blank=True)
@@ -78,6 +92,18 @@ class Tourist(models.Model):
     def __str__(self): return self.name
 
 class Contract(models.Model):
+    updated_at=models.DateTimeField(auto_now=True,editable=False)
+    tourvisor_id=models.CharField('ID онлайн-заявки Турвизора',max_length=40,unique=True,null=True,blank=True,editable=False)
+    tourvisor_time=models.CharField('Время создания в Турвизоре',max_length=20,blank=True,editable=False)
+    source_data=models.JSONField(default=dict,blank=True,editable=False)
+    imported_at=models.DateTimeField('Последний импорт',null=True,blank=True,editable=False)
+    tour_name=models.CharField('Название тура у ТО',max_length=500,blank=True)
+    nights=models.PositiveIntegerField('Ночей',null=True,blank=True)
+    adults=models.PositiveIntegerField('Взрослых',default=0)
+    children=models.PositiveIntegerField('Детей',default=0)
+    infants=models.PositiveIntegerField('Младенцев',default=0)
+    source_currency=models.CharField('Валюта предложения',max_length=3,default='RUB')
+    operator_link=models.URLField('Ссылка из Турвизора',max_length=2000,blank=True)
     number = models.CharField('Номер договора Турвизора',max_length=100,blank=True)
     date = models.DateField('Дата договора',default=timezone.localdate)
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,verbose_name='Заказчик')
@@ -137,6 +163,7 @@ class ContractLine(models.Model):
     contract = models.ForeignKey(Contract,on_delete=models.CASCADE,related_name='lines')
     tourist = models.ForeignKey(Tourist,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Турист')
     description = models.CharField('Описание',max_length=250)
+    source_tourist_key=models.CharField(max_length=100,blank=True,editable=False)
     amount = models.DecimalField('Сумма, ₽ (может быть отрицательной)',max_digits=14,decimal_places=2,default=0)
     class Meta: verbose_name='Строка договора'; verbose_name_plural='Строки договора'
 
@@ -151,7 +178,9 @@ class Payment(models.Model):
     rate = models.DecimalField('Справочно: курс',max_digits=14,decimal_places=2,null=True,blank=True,validators=[MinValueValidator(Decimal('0.01'))])
     notes = models.TextField('Примечание',blank=True)
     class Meta: verbose_name='Финансовая операция'; verbose_name_plural='Финансы'
-    def __str__(self): return f'{self.get_kind_display()}: {self.amount} ₽'
+    def __str__(self):
+        from .templatetags.money import money
+        return f'{self.get_kind_display()}: {money(self.amount)} ₽'
 
 class TaskTemplate(models.Model):
     name = models.CharField('Задача',max_length=250)
@@ -228,3 +257,12 @@ class Country(LocationReference):
     class Meta(LocationReference.Meta):
         verbose_name='Страна'
         verbose_name_plural='Страны'
+
+class Currency(models.Model):
+    code=models.CharField('Код',max_length=3,unique=True)
+    name=models.CharField('Название',max_length=100)
+    class Meta:
+        verbose_name='Валюта'
+        verbose_name_plural='Валюты'
+        ordering=['code']
+    def __str__(self):return f'{self.code} · {self.name}'
