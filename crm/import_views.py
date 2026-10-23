@@ -35,7 +35,7 @@ class ConfirmForm(forms.Form):
 @sensitive_post_parameters()
 @sensitive_variables()
 def import_order(request):
-    lookup=LookupForm()
+    lookup=LookupForm(initial={'order_id':request.GET.get('order_id','')})
     preview=None;confirm=None;existing=None;comparison=[]
     if request.method=='POST' and request.POST.get('action')=='cancel':
         request.session.pop('tourvisor_preview',None)
@@ -82,7 +82,7 @@ def import_order(request):
                         expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'])
                     request.session.pop('tourvisor_preview',None)
                     messages.success(request,'Договор обновлён.' if existing else 'Договор импортирован.')
-                    return redirect('admin:crm_contract_change',contract.pk)
+                    return redirect('contract_card',pk=contract.pk)
             except TourvisorError as e:messages.error(request,str(e))
             except IntegrityError:messages.error(request,'Договор уже создан другим запросом. Загрузите предпросмотр повторно; дубликат не сохранён.')
             except OperationalError:messages.error(request,'База CRM временно занята. Попробуйте сохранить позже; частичный импорт не сохранён.')
