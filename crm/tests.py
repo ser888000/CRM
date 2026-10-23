@@ -168,3 +168,14 @@ class WorkflowTests(TestCase):
         form=form_class(data={'date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'task_templates':[template.pk]})
         self.assertFalse(form.is_valid())
         self.assertIn(f'task_due_{template.pk}',form.errors)
+
+    def test_contract_forms_offer_exit_without_saving(self):
+        self.client.force_login(self.user)
+        before=Contract.objects.count()
+        for url in ['/admin/crm/contract/add/',f'/admin/crm/contract/{self.c.pk}/change/']:
+            response=self.client.get(url)
+            self.assertEqual(response.status_code,200)
+            self.assertContains(response,'Выйти без сохранения')
+            self.assertContains(response,'href="/" onclick="return confirm(')
+        self.client.get('/')
+        self.assertEqual(Contract.objects.count(),before)
