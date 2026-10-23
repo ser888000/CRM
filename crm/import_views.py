@@ -9,6 +9,7 @@ from django.views.decorators.debug import sensitive_post_parameters,sensitive_va
 from django.views.decorators.cache import never_cache
 from .models import Contract,TaskTemplate
 from .services import task_due
+from .tourvisor_diff import compare_order,task_moves
 from .tourvisor import fetch_order,normalize_order,apply_order,TourvisorError,GROUPS
 
 class LookupForm(forms.Form):
@@ -16,17 +17,27 @@ class LookupForm(forms.Form):
 
 class ConfirmForm(forms.Form):
     token=forms.CharField(widget=forms.HiddenInput)
-    groups=forms.MultipleChoiceField(label='Что перенести / обновить',choices=list(GROUPS.items()),widget=forms.CheckboxSelectMultiple)
+    groups=forms.MultipleChoiceField(label='Что перенести / обновить',choices=list(GROUPS.items()),widget=forms.CheckboxSelectMultiple,required=False)
     end=forms.DateField(label='Подтвердите дату окончания тура',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     templates=forms.ModelMultipleChoiceField(label='Создать задачи (только для нового договора)',queryset=TaskTemplate.objects.all(),required=False,widget=forms.CheckboxSelectMultiple)
-    def __init__(self,*args,**kwargs):
+    move_tasks=forms.MultipleChoiceField(label='Перенести незавершённые задачи',choices=[],required=False,widget=forms.CheckboxSelectMultiple)
+    def __init__(self,*args,moves=None,existing=False,**kwargs):
         super().__init__(*args,**kwargs)
+        self.moves=moves or []
+        self.fields['move_tasks'].choices=[(str(m['task'].pk),m['task'].title) for m in self.moves]
+        if existing:self.fields['templates'].disabled=True
+        for move in self.moves:
+            self.fields[f'move_due_{move["task"].pk}']=forms.DateField(label=move['task'].title,required=False,initial=move['new'],widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-move-anchor':move['anchor'],'data-old-due':move['old'].isoformat(),'data-old-anchor':move['old_anchor'].isoformat()}))
         for t in TaskTemplate.objects.all():
             self.fields[f'due_{t.pk}']=forms.DateField(label=f'Срок: {t.name}',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     def clean(self):
         data=super().clean()
         for t in data.get('templates',[]):
             if not data.get(f'due_{t.pk}'):self.add_error(f'due_{t.pk}','Укажите дату выбранной задачи.')
+        for move_id in data.get('move_tasks',[]):
+            if not data.get(f'move_due_{move_id}'):self.add_error(f'move_due_{move_id}','Укажите новую дату задачи.')
+        if data.get('move_tasks') and 'tour' not in data.get('groups',[]):
+            self.add_error('move_tasks','Для переноса задач выберите раздел «Параметры тура».')
         return data
 
 @login_required
@@ -36,7 +47,7 @@ class ConfirmForm(forms.Form):
 @sensitive_variables()
 def import_order(request):
     lookup=LookupForm(initial={'order_id':request.GET.get('order_id','')})
-    preview=None;confirm=None;existing=None;comparison=[]
+    preview=None;confirm=None;existing=None;comparison=[];sections=[];moves=[]
     if request.method=='POST' and request.POST.get('action')=='cancel':
         request.session.pop('tourvisor_preview',None)
         return redirect('contracts')
@@ -48,6 +59,8 @@ def import_order(request):
                 raw=fetch_order(lookup.cleaned_data['order_id'])
                 existing=Contract.objects.filter(tourvisor_id=str(raw['id'])).first()
                 request.session['tourvisor_preview']={'order':raw,'token':secrets.token_urlsafe(24),'created':time.time(),'existing':existing.pk if existing else None,'version':str(existing.updated_at) if existing else None}
+                normalized=normalize_order(raw)
+                request.session['tourvisor_preview']['task_versions']={str(m['task'].pk):{'due':m['old'].isoformat(),'template':m['task'].template_id,'anchor':m['task'].template.anchor} for m in task_moves(existing,normalized)} if existing else {}
             except TourvisorError as e:messages.error(request,str(e))
     stored=request.session.get('tourvisor_preview')
     if stored:
@@ -59,17 +72,17 @@ def import_order(request):
                 preview=normalize_order(stored['order'])
                 existing=Contract.objects.filter(pk=stored['existing']).first() if stored['existing'] else None
                 default_contract=Contract(**preview['contract'])
-                initial={'token':stored['token'],'groups':list(GROUPS) if not existing else [],'end':preview['contract']['end'],'templates':TaskTemplate.objects.filter(active=True) if not existing else []}
+                sections=compare_order(existing,preview)
+                moves=task_moves(existing,preview) if existing else []
+                initial={'token':stored['token'],'groups':list(GROUPS) if not existing else [s['key'] for s in sections if s['changed']],'end':preview['contract']['end'] or (existing.end if existing else None),'templates':TaskTemplate.objects.filter(active=True) if not existing else [],'move_tasks':[str(m['task'].pk) for m in moves]}
                 initial.update({f'due_{t.pk}':task_due(default_contract,t) for t in TaskTemplate.objects.all()})
-                confirm=ConfirmForm(request.POST if request.method=='POST' and request.POST.get('action')=='confirm' else None,initial=initial)
-                if existing:
-                    for key,value in preview['contract'].items():
-                        if key not in ('number','date','tourvisor_time') and getattr(existing,key)!=value:
-                            comparison.append((existing._meta.get_field(key).verbose_name,getattr(existing,key),value))
-                    if existing.amount!=preview['price']:comparison.append(('Стоимость',existing.amount,preview['price']))
-                    for key,value in preview['customer'].items():
-                        current=getattr(existing.customer,key)
-                        if current!=value:comparison.append(('Заказчик: '+existing.customer._meta.get_field(key).verbose_name,current,value))
+                confirm=ConfirmForm(request.POST if request.method=='POST' and request.POST.get('action')=='confirm' else None,initial=initial,moves=moves,existing=bool(existing))
+                selected_groups=confirm['groups'].value() or []
+                for section in sections:section['selected']=section['key'] in selected_groups
+                selected_moves=confirm['move_tasks'].value() or []
+                for move in moves:
+                    move['selected']=str(move['task'].pk) in selected_moves
+                    move['field']=confirm[f'move_due_{move["task"].pk}']
                 if request.method=='POST' and request.POST.get('action')=='confirm' and confirm.is_valid():
                     if not secrets.compare_digest(confirm.cleaned_data['token'],stored['token']):
                         raise TourvisorError('Предпросмотр изменился. Загрузите заявку повторно.')
@@ -77,13 +90,26 @@ def import_order(request):
                         raise TourvisorError('Дата окончания тура раньше начала. Проверьте даты.')
                     if stored['existing'] and (not existing or str(existing.updated_at)!=stored['version']):
                         raise TourvisorError('Договор изменился после предпросмотра. Загрузите заявку повторно.')
+                    if confirm.cleaned_data['move_tasks'] and not request.user.has_perm('crm.change_task'):
+                        raise TourvisorError('Недостаточно прав для переноса задач.')
+                    if existing and not confirm.cleaned_data['groups'] and not confirm.cleaned_data['move_tasks']:
+                        request.session.pop('tourvisor_preview',None)
+                        messages.info(request,'Изменения не выбраны. Договор сохранён без изменений.')
+                        return redirect('contract_card',pk=existing.pk)
+                    updates=[]
+                    for move in moves:
+                        key=str(move['task'].pk)
+                        if key in confirm.cleaned_data['move_tasks']:
+                            version=stored.get('task_versions',{}).get(key)
+                            if not version:raise TourvisorError('Состав задач изменился. Загрузите сверку повторно.')
+                            updates.append({'id':move['task'].pk,'old':version['due'],'template':version['template'],'anchor':version.get('anchor'),'new':confirm.cleaned_data[f'move_due_{key}']})
                     contract=apply_order(stored['order'],request.user,set(confirm.cleaned_data['groups']),
                         templates=confirm.cleaned_data.get('templates'),dates={t.pk:confirm.cleaned_data.get(f'due_{t.pk}') for t in confirm.cleaned_data.get('templates',[])},
-                        expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'])
+                        expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'],task_updates=updates)
                     request.session.pop('tourvisor_preview',None)
                     messages.success(request,'Договор обновлён.' if existing else 'Договор импортирован.')
                     return redirect('contract_card',pk=contract.pk)
             except TourvisorError as e:messages.error(request,str(e))
             except IntegrityError:messages.error(request,'Договор уже создан другим запросом. Загрузите предпросмотр повторно; дубликат не сохранён.')
             except OperationalError:messages.error(request,'База CRM временно занята. Попробуйте сохранить позже; частичный импорт не сохранён.')
-    return render(request,'crm/import.html',{'lookup':lookup,'preview':preview,'confirm':confirm,'existing':existing,'comparison':comparison})
+    return render(request,'crm/import.html',{'lookup':lookup,'preview':preview,'confirm':confirm,'existing':existing,'comparison':comparison,'sections':sections,'moves':moves,'changed_count':sum(s['changed'] for s in sections)})

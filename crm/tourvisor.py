@@ -10,8 +10,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction,IntegrityError
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
-from .models import Contract,Customer,Operator,Tourist,ContractLine,AuditEvent,DepartureCity,Country
-from .services import create_tasks
+from .models import Contract,Customer,Operator,Tourist,ContractLine,AuditEvent,DepartureCity,Country,Task
+from .services import create_tasks,flight_description
 
 GROUPS={'customer':'Заказчик','tour':'Параметры тура','tourists':'Туристы','hotel':'Проживание','transport':'Перелёты','service':'Услуги','amount':'Стоимость договора'}
 class TourvisorError(Exception):pass
@@ -121,14 +121,14 @@ def normalize_order(o):
         for group in (hotels,flights,services):
             for r in group:
                 if any(isinstance(v,(dict,list)) for v in r.values()):raise ValueError
-        return {'customer':customer,'contract':contract,'operator':text(o.get('operator')),'price':price,'tourists':tourists,'hotel':hotels,'transport':flights,'service':services}
+        return {'comments':text(o.get('comments')),'customer':customer,'contract':contract,'operator':text(o.get('operator')),'price':price,'tourists':tourists,'hotel':hotels,'transport':flights,'service':services}
     except TourvisorError:raise
     except (ValueError,TypeError,InvalidOperation,ValidationError,KeyError):
         raise TourvisorError('В заявке неполные или некорректные данные. Проверьте ФИО, ТО, даты, валюту и стоимость в Турвизоре. Данные CRM не изменены.') from None
 
 @sensitive_variables()
 @transaction.atomic
-def apply_order(order,user,groups,templates=None,dates=None,expected=None,expected_version=None,end=None):
+def apply_order(order,user,groups,templates=None,dates=None,expected=None,expected_version=None,end=None,task_updates=None):
     n=normalize_order(order);source_id=str(order['id'])
     if end is not None and n['contract']['start'] and end<n['contract']['start']:
         raise TourvisorError('Дата окончания тура раньше начала.')
@@ -139,6 +139,21 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
         raise TourvisorError('Договор изменился. Загрузите предпросмотр повторно.')
     if contract and expected_version is not None and str(contract.updated_at)!=expected_version:
         raise TourvisorError('Договор изменился. Загрузите предпросмотр повторно.')
+    previous_flights=flight_description(contract) if contract else ''
+    pending_moves=[]
+    if task_updates:
+        if not contract or 'tour' not in groups or not user.has_perm('crm.change_task'):
+            raise TourvisorError('Перенос задач доступен только вместе с обновлением дат тура.')
+        for change in task_updates:
+            task=Task.objects.select_for_update().select_related('template').filter(pk=change['id'],contract=contract).first()
+            if not task or task.done or str(task.due)!=change['old'] or task.template_id!=change['template'] or not task.template or task.template.anchor not in ('start','end') or change.get('anchor',task.template.anchor)!=task.template.anchor:
+                raise TourvisorError('Задача изменилась после предпросмотра. Загрузите сверку повторно; изменения не сохранены.')
+            anchor=task.template.anchor
+            old_anchor=contract.start if anchor=='start' else contract.end
+            new_anchor=n['contract']['start'] if anchor=='start' else (end or n['contract']['end'] or contract.end)
+            if not old_anchor or not new_anchor or old_anchor==new_anchor:
+                raise TourvisorError('Даты поездки для выбранной задачи не изменились. Снимите галочку переноса.')
+            pending_moves.append((task,change['new']))
     new=contract is None
     if new:
         if not {'customer','tour','amount'}.issubset(groups):
@@ -195,5 +210,14 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
     snapshot['id']=source_id
     contract.source_data=snapshot;contract.imported_at=timezone.now();contract.save()
     if new:create_tasks(contract,templates=templates or [],dates=dates)
+    for task,new_due in pending_moves:
+        old_due=task.due;task.due=new_due
+        changes={'due':{'old':str(old_due),'new':str(new_due)}}
+        if 'transport' in groups and task.template.copy_flights and previous_flights and task.description.startswith(previous_flights):
+            old_description=task.description
+            task.description=flight_description(contract)+old_description[len(previous_flights):]
+            if task.description!=old_description:changes['description']={'old':old_description,'new':task.description}
+        task.save(update_fields=['due','description'])
+        AuditEvent.objects.create(actor=user,object_type='crm.Task',object_id=str(task.pk),action='rescheduled',changes=changes)
     AuditEvent.objects.create(actor=user,object_type='crm.Contract',object_id=str(contract.pk),action='tourvisor_created' if new else 'tourvisor_updated',changes={'groups':sorted(groups)})
     return contract
