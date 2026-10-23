@@ -105,3 +105,29 @@ class SyncTests(TestCase):
         with self.assertRaises(TourvisorError):
             apply_order(self.changed_trip(),self.user,{'tour'},expected=self.c.pk,end=date(2026,12,11),task_updates=[{'id':t.pk,'old':str(t.due),'template':t.template_id,'anchor':'start','new':date(2026,12,2)}])
         self.c.refresh_from_db();self.assertEqual(self.c.start,date(2026,12,1))
+
+    def test_hotel_changes_are_not_duplicated(self):
+        changed=copy.deepcopy(self.order)
+        changed['hotel'][0]['name']='Новое название'
+        changed['hotel'][0]['room']='Новый номер'
+        section=next(s for s in compare_order(self.c,normalize_order(changed)) if s['key']=='hotel')
+        self.assertEqual(len(section['changes']),2)
+        self.assertEqual([c['label'] for c in section['changes']],['Отель','Категория номера'])
+    def test_money_scale_is_not_a_change(self):
+        self.order['price']='200000.00'
+        section=next(s for s in compare_order(self.c,normalize_order(self.order)) if s['key']=='amount')
+        self.assertFalse(section['changed'])
+    def test_service_rename_and_deletion_are_paired_by_name(self):
+        from .tourvisor_diff import array_diff
+        old=[{'name':'Медицинская страховка франшиза 30 у.е'},{'name':'Топливный сбор'},{'name':'Трансфер аэропорт - отель - аэропорт групповой'}]
+        new=[{'name':'Медицинская страховка франшиза 30 у.е1111'},{'name':'Трансфер аэропорт - отель - аэропорт групповой1111'}]
+        changes=array_diff(old,new,'service')
+        self.assertEqual(len(changes),3)
+        self.assertTrue(all(c['label']=='Название' for c in changes))
+        self.assertIn({'label':'Название','old':'Топливный сбор','new':'—'},changes)
+        self.assertIn({'label':'Название','old':old[2]['name'],'new':new[1]['name']},changes)
+    def test_booking_prefix_and_explicit_template(self):
+        operator=self.c.operator
+        for template in ['https://agency.pegast.ru/MyAccount/Bookings/?bi=','https://agency.pegast.ru/MyAccount/Bookings/?bi={booking}']:
+            operator.booking_url_template=template;operator.full_clean()
+            self.assertEqual(operator.booking_link('12345'),'https://agency.pegast.ru/MyAccount/Bookings/?bi=12345')

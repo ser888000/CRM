@@ -1,5 +1,6 @@
 """Human-readable comparisons use the same normalized values as the importer."""
 import json
+from difflib import SequenceMatcher
 from datetime import date,datetime
 from decimal import Decimal
 from .models import Customer,Contract,Tourist,Task
@@ -12,6 +13,7 @@ def canonical(value):
     if value is None or value=='':return ''
     if isinstance(value,(date,datetime)):return value.isoformat()
     if isinstance(value,bool):return '1' if value else '0'
+    if isinstance(value,Decimal):return format(value.normalize(),'f')
     return str(value).strip()
 
 def display(value):
@@ -25,24 +27,35 @@ def add_change(changes,label,old,new,force=False):
     if force or canonical(old)!=canonical(new):changes.append({'label':str(label),'old':display(old),'new':display(new)})
 
 def array_diff(old,new,group):
-    # Service start dates are deliberately not imported into working fields.
     if group=='service':
         old=[{'name':v.get('name','')} for v in old];new=[{'name':v.get('name','')} for v in new]
     stable=lambda v:json.dumps({k:canonical(x) for k,x in v.items()},sort_keys=True,ensure_ascii=False)
-    old=sorted(old,key=stable);new=sorted(new,key=stable)
-    if [stable(v) for v in old]==[stable(v) for v in new]:return []
-    # Match an unchanged row first, then pair remaining rows to show actual field changes.
+    if sorted(stable(v) for v in old)==sorted(stable(v) for v in new):return []
     remaining=list(old);changed_new=[]
     for entry in new:
         index=next((i for i,v in enumerate(remaining) if stable(v)==stable(entry)),None)
         if index is None:changed_new.append(entry)
         else:remaining.pop(index)
+    pairs=[]
+    if group=='service':
+        # No stable service IDs exist. Match only similar names; never pair an
+        # unrelated deleted service with a renamed service just by row position.
+        candidates=sorted(((SequenceMatcher(None,canonical(a.get('name')).casefold(),canonical(b.get('name')).casefold()).ratio(),i,j) for i,a in enumerate(remaining) for j,b in enumerate(changed_new)),reverse=True)
+        used_old=set();used_new=set()
+        for score,i,j in candidates:
+            if score>=0.55 and i not in used_old and j not in used_new:
+                pairs.append((remaining[i],changed_new[j]));used_old.add(i);used_new.add(j)
+        pairs.extend((a,{}) for i,a in enumerate(remaining) if i not in used_old)
+        pairs.extend(({},b) for j,b in enumerate(changed_new) if j not in used_new)
+    else:
+        pairs=[(remaining[i] if i<len(remaining) else {},changed_new[i] if i<len(changed_new) else {}) for i in range(max(len(remaining),len(changed_new)))]
     changes=[]
-    for i in range(max(len(remaining),len(changed_new))):
-        a=remaining[i] if i<len(remaining) else {};b=changed_new[i] if i<len(changed_new) else {}
-        title=b.get('number') or b.get('name') or a.get('number') or a.get('name') or f'Запись {i+1}'
+    for index,(a,b) in enumerate(pairs):
         for key in dict.fromkeys([*a,*b]):
-            add_change(changes,f'{title} · {LABELS.get(key,key)}',a.get(key),b.get(key))
+            label='Отель' if group=='hotel' and key=='name' else LABELS.get(key,key)
+            if group=='transport':label=f"{b.get('number') or a.get('number') or f'Рейс {index+1}'} · {label}"
+            elif group=='hotel' and max(len(old),len(new))>1:label=f'Отель {index+1} · {label}'
+            add_change(changes,label,a.get(key),b.get(key))
     return changes
 
 def compare_order(existing,normalized):
@@ -80,10 +93,14 @@ def compare_order(existing,normalized):
                 add_change(changes,f'{name} · {model_field.verbose_name}',choices.get(getattr(old,field),getattr(old,field)),choices.get(value,value))
     section('tourists',changes)
     for group in ('hotel','transport','service'):
-        changes=array_diff(existing.source_data.get(group,[]) if existing else [],normalized[group],group)
+        previous=[dict(row) for row in existing.source_data.get(group,[])] if existing else []
         if group=='hotel' and existing:
-            for field in ('hotel','region','room','meal'):
-                add_change(changes,Contract._meta.get_field(field).verbose_name,getattr(existing,field),normalized['contract'].get(field,''))
+            # The first imported hotel is mirrored in editable contract fields.
+            # Compare that logical value once, using the actual current CRM value.
+            if not previous and any(getattr(existing,f) for f in ('hotel','region','room','meal')):previous=[{}]
+            if previous:
+                for field,key in [('hotel','name'),('region','region'),('room','room'),('meal','meal')]:previous[0][key]=getattr(existing,field)
+        changes=array_diff(previous,normalized[group],group)
         section(group,changes)
     changes=[];add_change(changes,'Стоимость договора, ₽',existing.amount if existing else None,normalized['price'])
     section('amount',changes)

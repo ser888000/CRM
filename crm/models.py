@@ -32,6 +32,7 @@ def booking_url(template,number):
         return ''
     try:
         url=template.format(booking=quote(number,safe=''))
+        if '{booking}' not in template and template.endswith(('=','/')):url+=quote(number,safe='')
         parts=urlsplit(url)
         if parts.scheme not in ('https','http') or not parts.hostname or parts.username or parts.password:
             return ''
@@ -58,16 +59,16 @@ class PaymentMethod(NamedReference):
 
 class Operator(models.Model):
     name = models.CharField('Название',max_length=200,unique=True)
-    booking_url_template = models.CharField('Шаблон ссылки на бронь',max_length=1500,blank=True,help_text='Например: https://operator.example/booking/{booking}. Вместо {booking} будет подставлен номер брони. Нужна ссылка именно для этого ТО.')
+    booking_url_template = models.CharField('Шаблон ссылки на бронь',max_length=1500,blank=True,help_text='Полная ссылка с https:// и {booking} вместо номера. Можно также адрес, заканчивающийся на = или / — номер добавится в конец. Пример: https://agency.pegast.ru/MyAccount/Bookings/?bi={booking}')
     def clean(self):
         super().clean()
         if self.booking_url_template:
             try:
                 fields=[field for _,field,_,_ in Formatter().parse(self.booking_url_template) if field is not None]
-                if not fields or any(field!='booking' for field in fields) or not booking_url(self.booking_url_template,'TEST'):
+                if any(field!='booking' for field in fields) or (not fields and not self.booking_url_template.endswith(('=','/'))) or not booking_url(self.booking_url_template,'TEST'):
                     raise ValueError
             except (ValueError,KeyError,IndexError,AttributeError):
-                raise ValidationError({'booking_url_template':'Укажите HTTP(S)-ссылку с подстановкой {booking}.'})
+                raise ValidationError({'booking_url_template':'Укажите полную ссылку с https:// и {booking} вместо номера, либо адрес, заканчивающийся на = или /.'})
     def booking_link(self,number):
         return booking_url(self.booking_url_template,number)
     class Meta: verbose_name='Туроператор'; verbose_name_plural='Туроператоры'

@@ -89,7 +89,7 @@ class WorkflowTests(TestCase):
         self.operator.full_clean();self.operator.save()
         b=Booking.objects.create(contract=self.c,number='AB/12 ?')
         self.assertEqual(b.booking_link,'https://example.test/book/AB%2F12%20%3F')
-        for bad in ['javascript:alert({booking})','https://example.test/{unknown}','https://example.test/']:
+        for bad in ['javascript:alert({booking})','https://example.test/{unknown}','https://example.test']:
             self.operator.booking_url_template=bad
             with self.assertRaises(ValidationError):self.operator.full_clean()
 
