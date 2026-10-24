@@ -1,5 +1,5 @@
 from django import forms
-from .forms import ContractForm
+from .forms import ContractForm,CustomerForm
 from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskTemplate,Currency
 from .services import task_due
 from .widgets import MoneyInput
@@ -18,7 +18,7 @@ class CardContractForm(ContractForm):
         for t in templates:
             self.fields[f'task_due_{t.pk}']=forms.DateField(label=f'Срок: {t.name}',required=False,initial=task_due(self.instance,t),widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':t.anchor,'data-task-offset':t.offset,'data-task-id':t.pk}))
 
-class CustomerCardForm(forms.ModelForm):
+class CustomerCardForm(CustomerForm):
     class Meta:
         model=Customer
         fields=['name','surname','given_name','patronymic','birthday','main_phone','main_email','phones','emails','address','passport_number','passport_issued','passport_issued_by','passport_code','passport']
@@ -38,7 +38,7 @@ class CardPaymentForm(forms.ModelForm):
         localized_fields=['amount','rate']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['currency']=forms.ChoiceField(label='Валюта оплаты ТО (справочно)',required=False,choices=[('','—')]+[(c.code,str(c)) for c in Currency.objects.all()])
+        self.fields['currency']=forms.ChoiceField(label='Валюта оплаты ТО (справочно)',required=False,initial='RUB',choices=[('','—')]+[(c.code,str(c)) for c in Currency.objects.all()])
 
 class BookingCardForm(forms.ModelForm):
     class Meta:

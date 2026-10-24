@@ -21,11 +21,18 @@ class ConfirmForm(forms.Form):
     end=forms.DateField(label='Подтвердите дату окончания тура',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     templates=forms.ModelMultipleChoiceField(label='Создать задачи (только для нового договора)',queryset=TaskTemplate.objects.all(),required=False,widget=forms.CheckboxSelectMultiple)
     move_tasks=forms.MultipleChoiceField(label='Перенести незавершённые задачи',choices=[],required=False,widget=forms.CheckboxSelectMultiple)
-    def __init__(self,*args,moves=None,existing=False,**kwargs):
+    def __init__(self,*args,moves=None,existing=False,customer_data=None,**kwargs):
         super().__init__(*args,**kwargs)
         self.moves=moves or []
         self.fields['move_tasks'].choices=[(str(m['task'].pk),m['task'].title) for m in self.moves]
         if existing:self.fields['templates'].disabled=True
+        elif customer_data:
+            from .customer_matching import customer_matches
+            match,candidates=customer_matches(customer_data)
+            if candidates:
+                self.fields['customer_choice']=forms.ChoiceField(label='Заказчик в CRM',choices=[('auto','Использовать совпавшего заказчика: '+str(match))] if match else [('', 'Выберите заказчика')],initial='auto' if match else '')
+                self.fields['customer_choice'].choices=list(self.fields['customer_choice'].choices)+[(str(c.pk),f'{c.name} · {c.main_phone} · {c.main_email}') for c in candidates]+[('new','Создать нового заказчика')]
+
         for move in self.moves:
             self.fields[f'move_due_{move["task"].pk}']=forms.DateField(label=move['task'].title,required=False,initial=move['new'],widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-move-anchor':move['anchor'],'data-old-due':move['old'].isoformat(),'data-old-anchor':move['old_anchor'].isoformat()}))
         for t in TaskTemplate.objects.all():
@@ -76,7 +83,7 @@ def import_order(request):
                 moves=task_moves(existing,preview) if existing else []
                 initial={'token':stored['token'],'groups':list(GROUPS) if not existing else [s['key'] for s in sections if s['changed']],'end':preview['contract']['end'] or (existing.end if existing else None),'templates':TaskTemplate.objects.filter(active=True) if not existing else [],'move_tasks':[str(m['task'].pk) for m in moves]}
                 initial.update({f'due_{t.pk}':task_due(default_contract,t) for t in TaskTemplate.objects.all()})
-                confirm=ConfirmForm(request.POST if request.method=='POST' and request.POST.get('action')=='confirm' else None,initial=initial,moves=moves,existing=bool(existing))
+                confirm=ConfirmForm(request.POST if request.method=='POST' and request.POST.get('action')=='confirm' else None,initial=initial,moves=moves,existing=bool(existing),customer_data=preview['customer'])
                 selected_groups=confirm['groups'].value() or []
                 for section in sections:section['selected']=section['key'] in selected_groups
                 selected_moves=confirm['move_tasks'].value() or []
@@ -105,7 +112,7 @@ def import_order(request):
                             updates.append({'id':move['task'].pk,'old':version['due'],'template':version['template'],'anchor':version.get('anchor'),'new':confirm.cleaned_data[f'move_due_{key}']})
                     contract=apply_order(stored['order'],request.user,set(confirm.cleaned_data['groups']),
                         templates=confirm.cleaned_data.get('templates'),dates={t.pk:confirm.cleaned_data.get(f'due_{t.pk}') for t in confirm.cleaned_data.get('templates',[])},
-                        expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'],task_updates=updates)
+                        expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'],task_updates=updates,customer_choice=confirm.cleaned_data.get('customer_choice','auto'))
                     request.session.pop('tourvisor_preview',None)
                     messages.success(request,'Договор обновлён.' if existing else 'Договор импортирован.')
                     return redirect('contract_card',pk=contract.pk)

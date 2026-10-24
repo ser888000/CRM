@@ -11,16 +11,9 @@ from .models import Contract, Task, AuditEvent, Payment, Customer, PaymentMethod
 @login_required
 @permission_required('crm.view_contract',raise_exception=True)
 def contracts(request):
-    qs=Contract.objects.select_related('customer','operator').order_by('-date','-pk')
-    for param,lookup in [('customer','customer__name__icontains'),('operator','operator__name__icontains'),('country','country__icontains'),('number','number__icontains')]:
-        if request.GET.get(param): qs=qs.filter(**{lookup:request.GET[param]})
-    dateform=DateRange(request.GET)
-    if dateform.is_valid():
-        if dateform.cleaned_data['start']:qs=qs.filter(date__gte=dateform.cleaned_data['start'])
-        if dateform.cleaned_data['end']:qs=qs.filter(date__lte=dateform.cleaned_data['end'])
-    rows=list(qs)
-    totals={k:sum((getattr(c,k) for c in rows),Decimal('0')) for k in ['amount','paid','cost','profit','debt']}
-    return render(request,'crm/contracts.html',{'rows':rows,'totals':totals,'count':len(rows),'dateform':dateform})
+    from .contract_journal import journal_context
+    return render(request,'crm/contracts.html',journal_context(request.GET,DateRange))
+
 class DateRange(forms.Form):
     start=forms.DateField(required=False)
     end=forms.DateField(required=False)

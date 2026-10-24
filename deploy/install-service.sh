@@ -6,6 +6,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root'; exit 1; fi
 if ! id aborigen-crm >/dev/null 2>&1; then
     useradd --system --home-dir /var/lib/aborigen-crm --shell /usr/sbin/nologin aborigen-crm
 fi
+.venv/bin/pip install -r requirements.txt
 if systemctl is-active --quiet aborigen-crm; then systemctl stop aborigen-crm; fi
 install -d -m 700 -o aborigen-crm -g aborigen-crm /var/lib/aborigen-crm
 python3 - <<'PY'

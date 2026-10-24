@@ -6,7 +6,7 @@ from django.urls import path
 from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod, DepartureCity, Country, Currency
+from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod, DepartureCity, Country, Currency, Meal, Transfer, Insurance, FuelSurcharge
 from .services import create_tasks, copy_contract
 from .forms import ContractForm, PaymentForm
 from .templatetags.money import money
@@ -148,6 +148,8 @@ class ContractAdmin(AuditedAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(AuditedAdmin):
+    from .forms import CustomerForm
+    form=CustomerForm
     list_display=['name','main_phone','main_email','phones','emails']
     search_fields=['name','main_phone','main_email','phones','emails']
     readonly_fields=['contracts_link']
@@ -164,7 +166,7 @@ class OperatorAdmin(AuditedAdmin):
     search_fields=['name']
     list_display=['name','booking_url_template']
 
-@admin.register(ContractType,PaymentMethod)
+@admin.register(ContractType,PaymentMethod,Meal,Transfer,Insurance,FuelSurcharge)
 class ReferenceAdmin(AuditedAdmin):
     search_fields=['name']
     list_display=['name']

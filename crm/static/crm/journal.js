@@ -1,0 +1,11 @@
+document.addEventListener('DOMContentLoaded',()=>{
+ const table=document.querySelector('#contracts'),form=document.querySelector('#journal-filters');if(!table)return;
+ const key='crm.columns.v2.'+table.dataset.user,headers=[...table.tHead.rows[0].cells],ids=headers.map(h=>h.dataset.col);
+ let state;try{state=JSON.parse(localStorage.getItem(key))}catch(e){}
+ if(!state||!Array.isArray(state.order)||!Array.isArray(state.hidden))state={order:[],hidden:[]};
+ state.order=[...new Set(state.order.filter(id=>ids.includes(id)).concat(ids))];state.hidden=state.hidden.filter(id=>ids.includes(id));
+ function apply(){[...table.rows].forEach(r=>state.order.forEach(id=>{const c=[...r.cells].find(c=>c.dataset.col===id);if(c){r.append(c);c.hidden=state.hidden.includes(id)}}));try{localStorage.setItem(key,JSON.stringify(state))}catch(e){}}
+ headers.forEach(h=>{const id=h.dataset.col,label=document.createElement('label'),cb=document.createElement('input');cb.type='checkbox';cb.checked=!state.hidden.includes(id);cb.onchange=()=>{state.hidden=state.hidden.filter(v=>v!==id);if(!cb.checked)state.hidden.push(id);apply()};label.append(cb,document.createTextNode(h.dataset.label));document.querySelector('#columns').append(label);h.draggable=true;h.ondragstart=e=>{if(e.target.closest('details,button,input')){e.preventDefault();return}e.dataTransfer.setData('text/plain',id)};h.ondragover=e=>e.preventDefault();h.ondrop=e=>{e.preventDefault();const from=e.dataTransfer.getData('text/plain');if(!ids.includes(from)||from===id)return;state.order=state.order.filter(v=>v!==from);state.order.splice(state.order.indexOf(id),0,from);apply()}});apply();
+ document.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{document.querySelector('#journal-sort').value=b.dataset.sort;form.requestSubmit()});
+ document.querySelectorAll('.column-filter').forEach(d=>{d.querySelector('[type=search]').oninput=e=>d.querySelectorAll('label').forEach(l=>l.hidden=!l.textContent.toLocaleLowerCase('ru').includes(e.target.value.toLocaleLowerCase('ru')));d.querySelector('.clear-column').onclick=()=>{d.querySelectorAll('[type=checkbox]').forEach(c=>c.checked=false)};d.addEventListener('toggle',()=>{if(d.open)document.querySelectorAll('.column-filter').forEach(other=>{if(other!==d)other.open=false})})});
+});

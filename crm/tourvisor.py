@@ -128,7 +128,7 @@ def normalize_order(o):
 
 @sensitive_variables()
 @transaction.atomic
-def apply_order(order,user,groups,templates=None,dates=None,expected=None,expected_version=None,end=None,task_updates=None):
+def apply_order(order,user,groups,templates=None,dates=None,expected=None,expected_version=None,end=None,task_updates=None,customer_choice='auto'):
     n=normalize_order(order);source_id=str(order['id'])
     if end is not None and n['contract']['start'] and end<n['contract']['start']:
         raise TourvisorError('Дата окончания тура раньше начала.')
@@ -163,16 +163,28 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             raise TourvisorError('В CRM уже есть договор с этим номером без связи с Турвизором. Автоматический импорт остановлен; сначала проверьте существующий договор.')
         if 'hotel' not in groups:
             for field in ('hotel','region','room','meal'):n['contract'].pop(field,None)
-        customer=Customer.objects.create(**n['customer'])
+        from .customer_matching import customer_matches
+        match,candidates=customer_matches(n['customer'])
+        if customer_choice=='new':customer=Customer.objects.create(**n['customer'])
+        elif customer_choice=='auto':
+            if match:customer=Customer.objects.select_for_update().get(pk=match.pk)
+            elif candidates:raise TourvisorError('Найдены похожие заказчики. Выберите существующего или создание нового.')
+            else:customer=Customer.objects.create(**n['customer'])
+        else:
+            customer=next((c for c in candidates if str(c.pk)==str(customer_choice)),None)
+            if not customer:raise TourvisorError('Список похожих заказчиков изменился. Загрузите заявку повторно.')
+            customer=Customer.objects.select_for_update().get(pk=customer.pk)
         operator=Operator.objects.get_or_create(name=n['operator'])[0]
         contract=Contract.objects.create(customer=customer,operator=operator,tourvisor_id=source_id,**n['contract'])
     if 'customer' in groups and not new:
         customer=contract.customer
-        # Do not overwrite a customer card that is also used in another contract without isolating it.
-        if customer.contract_set.exclude(pk=contract.pk).exists():
-            customer.pk=None;customer.save();contract.customer=customer
-        for k,v in n['customer'].items():setattr(customer,k,v)
-        customer.save()
+        if any(getattr(customer,k)!=v for k,v in n['customer'].items()):
+            # Isolate real changes only; selecting an unchanged section must not
+            # create another customer card after successful reuse on import.
+            if customer.contract_set.exclude(pk=contract.pk).exists():
+                customer.pk=None;customer.save();contract.customer=customer
+            for k,v in n['customer'].items():setattr(customer,k,v)
+            customer.save()
     if 'tour' in groups and not new:
         for k,v in n['contract'].items():
             if k not in ('number','date','tourvisor_time','hotel','region','room','meal'):setattr(contract,k,v)

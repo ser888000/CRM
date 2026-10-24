@@ -25,6 +25,11 @@ class Customer(models.Model):
     phones = models.TextField('Дополнительные телефоны (по одному в строке)',blank=True)
     emails = models.TextField('Дополнительные email (по одному в строке)',blank=True)
     class Meta: verbose_name='Заказчик'; verbose_name_plural='Заказчики'
+    def save(self,*args,**kwargs):
+        full=' '.join(v.strip() for v in (self.surname,self.given_name,self.patronymic) if v.strip())
+        if full:self.name=full
+        if kwargs.get('update_fields') and full:kwargs['update_fields']=set(kwargs['update_fields'])|{'name'}
+        super().save(*args,**kwargs)
     def __str__(self): return self.name
 
 def booking_url(template,number):
@@ -56,6 +61,22 @@ class PaymentMethod(NamedReference):
     class Meta(NamedReference.Meta):
         verbose_name='Способ оплаты'
         verbose_name_plural='Способы оплаты'
+
+class Meal(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name='Питание'; verbose_name_plural='Питание'
+
+class Transfer(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name='Трансфер'; verbose_name_plural='Трансферы'
+
+class Insurance(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name='Страховка'; verbose_name_plural='Страховки'
+
+class FuelSurcharge(NamedReference):
+    class Meta(NamedReference.Meta):
+        verbose_name='Топливный сбор'; verbose_name_plural='Топливные сборы'
 
 class Operator(models.Model):
     name = models.CharField('Название',max_length=200,unique=True)
@@ -104,7 +125,7 @@ class Contract(models.Model):
     children=models.PositiveIntegerField('Детей',default=0)
     infants=models.PositiveIntegerField('Младенцев',default=0)
     source_currency=models.CharField('Валюта предложения',max_length=3,default='RUB')
-    operator_link=models.URLField('Ссылка из Турвизора',max_length=2000,blank=True)
+    operator_link=models.URLField('Ссылка на тур у ТО',max_length=2000,blank=True)
     number = models.CharField('Номер договора Турвизора',max_length=100,blank=True)
     date = models.DateField('Дата договора',default=timezone.localdate)
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,verbose_name='Заказчик')
@@ -120,6 +141,7 @@ class Contract(models.Model):
     meal = models.CharField('Питание',max_length=100,blank=True)
     transfer = models.CharField('Трансфер',max_length=200,blank=True)
     insurance = models.CharField('Страховка',max_length=200,blank=True)
+    fuel_surcharge = models.CharField('Топливный сбор',max_length=200,blank=True)
     services = models.TextField('Дополнительные услуги',blank=True)
     flights = models.TextField('Рейсы туда и обратно',blank=True)
     payment_method = models.ForeignKey(PaymentMethod,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Основной способ оплаты')

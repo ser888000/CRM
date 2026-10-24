@@ -1,5 +1,5 @@
 from django import forms
-from .models import Contract,TaskTemplate,Payment,Customer,DepartureCity,Country,Currency
+from .models import Contract,TaskTemplate,Payment,Customer,DepartureCity,Country,Currency,Meal,Transfer,Insurance,FuelSurcharge
 from .services import task_due
 from .widgets import LocationInput,MoneyInput
 
@@ -8,10 +8,11 @@ class ContractForm(forms.ModelForm):
     class Meta:
         model=Contract
         fields='__all__'
-        widgets={'departure':LocationInput(DepartureCity),'country':LocationInput(Country)}
+        widgets={'departure':LocationInput(DepartureCity),'country':LocationInput(Country),'meal':LocationInput(Meal),'transfer':LocationInput(Transfer),'insurance':LocationInput(Insurance),'fuel_surcharge':LocationInput(FuelSurcharge)}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['source_currency']=forms.ChoiceField(label='Валюта предложения',choices=[(c.code,str(c)) for c in Currency.objects.all()],initial='RUB')
+        if not self.instance.pk:self.initial.setdefault('source_currency','RUB')
         if self.instance.pk:
             self.fields['task_templates'].queryset=TaskTemplate.objects.exclude(task__contract=self.instance)
             self.fields['task_templates'].initial=[]
@@ -47,7 +48,7 @@ class PaymentForm(forms.ModelForm):
         localized_fields=['amount','rate']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['currency']=forms.ChoiceField(label='Справочно: валюта оплаты ТО',required=False,choices=[('','---------')]+[(c.code,str(c)) for c in Currency.objects.all()])
+        self.fields['currency']=forms.ChoiceField(label='Справочно: валюта оплаты ТО',required=False,initial='RUB',choices=[('','---------')]+[(c.code,str(c)) for c in Currency.objects.all()])
         customer=None
         if self.is_bound:
             customer=self.data.get(self.add_prefix('customer'))
@@ -67,3 +68,24 @@ class PaymentForm(forms.ModelForm):
         self.fields['contract'].label_from_instance=lambda c:f'{c} · {c.customer}'
     class Media:
         js=['crm/payment_customer.js']
+
+
+class CustomerForm(forms.ModelForm):
+    class Meta:
+        model=Customer
+        fields='__all__'
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['name'].required=False
+        self.fields['name'].widget.attrs['readonly']=True
+        self.order_fields(['surname','given_name','patronymic','name','birthday','main_phone','phones','main_email','emails'])
+        for field in self.fields.values():
+            if isinstance(field.widget,forms.Textarea):field.widget.attrs['rows']=3
+    def clean(self):
+        data=super().clean()
+        full=' '.join(data.get(k,'').strip() for k in ('surname','given_name','patronymic') if data.get(k,'').strip())
+        data['name']=full or data.get('name','').strip()
+        if not data['name']:self.add_error('surname','Укажите фамилию и имя заказчика.')
+        return data
+    class Media:
+        js=['crm/customer_name.js']

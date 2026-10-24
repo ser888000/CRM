@@ -12,7 +12,7 @@ from .models import Contract,Payment,Booking,ContractLine,Task,Tourist,AuditEven
 from .card_forms import CardContractForm,CustomerCardForm,TouristCardForm,CardPaymentForm,BookingCardForm,LineCardForm,TaskCardForm
 from .services import create_tasks,copy_contract
 
-GROUPS=[('Основное',['number','date','customer','operator','contract_type']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['transfer','insurance','services','flights','operator_link']),('Оплата и примечания',['payment_method','operator_due','operator_paid','metrika_id','notes'])]
+GROUPS=[('Основное',['number','date','customer','operator','contract_type','notes']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['flights','transfer','insurance','fuel_surcharge','services','operator_link']),('Оплата и примечания',['payment_method','operator_due','operator_paid','metrika_id'])]
 
 def require(user,*perms):
     if not user.has_perms(perms):raise PermissionDenied
