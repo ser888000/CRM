@@ -97,6 +97,30 @@ def mrz_fields(text,kind):
     return {}
 
 
+def issuing_authority(text):
+    """Read the authority block, tolerating OCR damage in printed labels only."""
+    anchor=re.search(r'ПАСПОРТ\s+ВЫ[ДЛ]АН\b',text,re.I)
+    if not anchor:return ''
+    block=text[anchor.end():]
+    boundary=re.search(
+        r'(?:[ДЛА]АТА\s+[ВB][ЫИ][ДЛ]АЧ[ИЫ]|[КK][ОO][ДЛAА]\s+ПОДРАЗДЕЛЕНИЯ|'
+        r'\d{2}\s*[.+/–—-]\s*\d{2}\s*[.+/–—-]\s*\d{4}|'
+        r'ЛИЧНЫЙ\s+КОД|ЛИЧНАЯ\s+ПОДПИСЬ|ФАМИЛИЯ|PNRUS)',block,re.I)
+    if boundary is None:return ''
+    block=block[:boundary.start()]
+    if len(block)>1500:return ''
+    homographs=str.maketrans('ABCEHKMOPTXYabcehkmoptxy','АВСЕНКМОРТХУавсенкмортху')
+    lines=[]
+    for line in block.splitlines()[:16]:
+        line=line.translate(homographs).strip(' _|=~;,:')
+        cyrillic=len(re.findall(r'[А-ЯЁа-яё]',line));letters=len(re.findall(r'[^\W\d_]',line))
+        # Drop isolated seal/watermark noise; never invent or expand an office name.
+        if cyrillic>=5 and cyrillic>=letters*.75:lines.append(line)
+    value=' '.join(' '.join(lines).split())
+    if not re.search(r'ОТДЕЛ|УФМС|УМВД|МВД|ГУВД|ОВД|ФМС|УПРАВЛ|ПОЛИЦ|МИД|УВД',value,re.I):return ''
+    return value if 5<=len(value)<=500 else ''
+
+
 def parse_passport(text,kind,include_mrz=True):
     result={};mrz=mrz_fields(text,kind) if include_mrz else {}
     text=text.replace('\r','\n')
@@ -112,14 +136,12 @@ def parse_passport(text,kind,include_mrz=True):
     for label,key in [(r'ДАТА\s+РОЖДЕНИЯ','birthday'),(r'ДАТА\s+ВЫДАЧИ','passport_issued' if kind=='customer' else 'issued')]:
         match=re.search(label+r'(?:\s*[/|:]\s*DATE\s+OF\s+(?:BIRTH|ISSUE))?\s*[:.\-]?\s*('+date_pattern+')',text,re.I)
         if match and iso_date(match[1]):result[key]=iso_date(match[1])
-    code=re.search(r'(?<!\d)\d{3}\s*[-–]\s*\d{3}(?!\d)',text)
-    if code and kind=='customer':result['passport_code']=re.sub(r'\s','',code[0]).replace('–','-')
+    code=re.search(r'(?<!\d)\d{3}\s*[-–—]\s*\d{3}(?!\d)',text)
+    if code and kind=='customer':result['passport_code']=re.sub(r'\s','',code[0]).replace('–','-').replace('—','-')
     number=re.search(r'(?<!\d)(\d{2})\s+(\d{2})\s+(\d{6})(?!\d)',text)
     if number:result['passport_number']=''.join(number.groups());result['passport_type']='1'
-    issued_by=re.search(r'ПАСПОРТ\s+ВЫДАН\s+(.+?)(?=ДАТА\s+ВЫДАЧИ|'+date_pattern+r'|КОД\s+ПОДРАЗДЕЛЕНИЯ)',text,re.I|re.S)
-    if issued_by:
-        value=' '.join(issued_by[1].split())
-        if 4<len(value)<=250:result['passport_issued_by' if kind=='customer' else 'issued_by']=value
+    issuer=issuing_authority(text)
+    if issuer and len(issuer)<=(500 if kind=='customer' else 250):result['passport_issued_by' if kind=='customer' else 'issued_by']=issuer
     if mrz:
         if mrz.get('passport_type')=='1':
             # RF layouts may print labels below the values. Prefer clearly read

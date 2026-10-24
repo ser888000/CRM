@@ -28,7 +28,7 @@ class JournalImprovementTests(TestCase):
     def test_unicode_contact_search_and_layout(self):
         for data in [{'customer':'пЕтРоВ'},{'email':'test@EXAMPLE'},{'phone':'89991112233'}]:
             with self.subTest(data=data):self.assertEqual(self.client.get('/',data).context['count'],3)
-        r=self.client.get('/')
+        r=self.client.get('/',follow=True)
         for label in ['Способ оплаты','Примечание','Город вылета','Дата оплаты ТО','Взр','Дети','Месяц (текущий)']:self.assertContains(r,label)
         for name in ['number','operator','country']:self.assertNotContains(r,f'name="{name}"')
         self.assertNotContains(r,'документов · Сумма')
@@ -61,7 +61,7 @@ class JournalImprovementTests(TestCase):
         r=self.client.get(f'/contracts/{self.cards[0].pk}/')
         self.assertContains(r,__import__('json').dumps('Тестовое питание')[1:-1])
         self.assertNotContains(r,'Выберите недостающие задачи')
-        self.assertContains(r,'Топливный сбор');self.assertContains(r,'Ссылка на тур у ТО')
+        self.assertContains(r,'Топливный сбор');self.assertNotContains(r,'Ссылка на тур у ТО')
         f=CardContractForm().fields['meal'];self.assertIsNone(f.widget.attrs.get('readonly'))
 
 class MatchingTests(TestCase):

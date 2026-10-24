@@ -155,7 +155,6 @@ class Contract(models.Model):
     children=models.PositiveIntegerField('Детей',default=0)
     infants=models.PositiveIntegerField('Младенцев',default=0)
     source_currency=models.CharField('Валюта предложения',max_length=3,default='RUB')
-    operator_link=models.URLField('Ссылка на тур у ТО',max_length=2000,blank=True)
     number = models.CharField('Номер договора Турвизора',max_length=100,blank=True)
     date = models.DateField('Дата договора',default=timezone.localdate)
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,verbose_name='Заказчик')
@@ -231,9 +230,24 @@ class Payment(models.Model):
     rate = models.DecimalField('Справочно: курс',max_digits=14,decimal_places=2,null=True,blank=True,validators=[MinValueValidator(Decimal('0.01'))])
     notes = models.TextField('Примечание',blank=True)
     class Meta: verbose_name='Финансовая операция'; verbose_name_plural='Финансы'
+    def get_kind_display(self):
+        return dict(payment_operation_choices()).get(self.kind,self.kind)
     def __str__(self):
         from .templatetags.money import money
         return f'{self.get_kind_display()}: {money(self.amount)} ₽'
+
+class PaymentOperation(DefaultReference):
+    code=models.CharField('Тип операции',max_length=30,unique=True,choices=Payment.KINDS)
+    name=models.CharField('Название',max_length=100)
+    class Meta(DefaultReference.Meta):
+        verbose_name='Операция';verbose_name_plural='Операции';ordering=['pk']
+    def __str__(self):return self.name
+
+
+def payment_operation_choices():
+    labels=dict(PaymentOperation.objects.values_list('code','name'))
+    return [(code,labels.get(code,label)) for code,label in Payment.KINDS]
+
 
 class TaskTemplate(models.Model):
     name = models.CharField('Задача',max_length=250)

@@ -39,6 +39,8 @@ class CardPaymentForm(forms.ModelForm):
         localized_fields=['amount','rate']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        from .models import payment_operation_choices
+        self.fields['kind'].choices=[('','—')]+payment_operation_choices()
         self.fields['currency']=forms.ChoiceField(label='Валюта оплаты ТО (справочно)',required=False,initial='RUB',choices=[('','—')]+[(c.code,str(c)) for c in Currency.objects.all()])
         apply_reference_defaults(self,kwargs.get('initial'))
 

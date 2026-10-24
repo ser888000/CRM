@@ -88,7 +88,7 @@ def normalize_order(o):
         contract={
             'number':text(o.get('id')),'date':day(o.get('date'),True),'tourvisor_time':text(o.get('time')),
             'country':text(o.get('country')),'departure':text(o.get('departure')),'start':day(o.get('flydate')),
-            'tour_name':text(o.get('tour')),'source_currency':currency,'operator_link':text(o.get('operatorlink')),
+            'tour_name':text(o.get('tour')),'source_currency':currency,
             'nights':int(o['nights']) if o.get('nights') not in ('',None) else None,
             'adults':int(o.get('adult') or 0),'children':int(o.get('child') or 0),'infants':int(o.get('infant') or 0)}
         for name,model in [('country',Country),('departure',DepartureCity)]:

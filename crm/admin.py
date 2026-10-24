@@ -299,3 +299,13 @@ class CurrencyAdmin(AuditedAdmin):
     list_editable=['is_default']
     list_display=['code','name','is_default']
     search_fields=['code','name']
+
+
+from .models import PaymentOperation
+@admin.register(PaymentOperation)
+class PaymentOperationAdmin(AuditedAdmin):
+    list_display=['code','name','is_default']
+    list_editable=['name','is_default']
+    readonly_fields=['code']
+    def has_add_permission(self,request):return False
+    def has_delete_permission(self,request,obj=None):return False

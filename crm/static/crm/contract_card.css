@@ -10,3 +10,5 @@
 .field[hidden],.form-row[hidden],.passport-import[hidden]{display:none!important}
 #new-customer-dialog{width:min(1000px,94vw);max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:24px;color:var(--ink);background:#fff}#new-customer-dialog::backdrop{background:#102e29aa}.dialog-header{display:flex;justify-content:space-between;align-items:center}.dialog-header button{padding:6px 12px}#new-customer-status{white-space:pre-wrap}
 .passport-import details{flex-basis:100%;width:100%}.passport-import pre{max-height:280px;overflow:auto;font-size:12px}
+
+.field [data-new-customer]{display:flex;margin-top:10px;width:fit-content;font-size:12px;padding:8px 12px}

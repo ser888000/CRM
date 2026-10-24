@@ -12,7 +12,23 @@ from .models import Contract, Task, AuditEvent, Payment, Customer, PaymentMethod
 @permission_required('crm.view_contract',raise_exception=True)
 def contracts(request):
     from .contract_journal import journal_context
-    return render(request,'crm/contracts.html',journal_context(request.GET,DateRange))
+    if 'reset' in request.GET:
+        request.session.pop('contract_journal',None)
+        return redirect('contracts')
+    if not request.GET and request.session.get('contract_journal'):
+        return redirect('/?'+request.session['contract_journal'])
+    context=journal_context(request.GET,DateRange)
+    if context['dateform'].is_valid():
+        from .contract_journal import COLUMNS
+        allowed={'customer','email','phone','number','operator','country','start','end','sort'}|{'f_'+key for key,_ in COLUMNS}
+        saved=request.GET.copy()
+        for key in list(saved):
+            if key not in allowed:del saved[key]
+        saved['start']=context['start_value'];saved['end']=context['end_value']
+        for key in list(saved):
+            if not any(saved.getlist(key)):del saved[key]
+        request.session['contract_journal']=saved.urlencode()
+    return render(request,'crm/contracts.html',context)
 
 class DateRange(forms.Form):
     start=forms.DateField(required=False)
@@ -71,4 +87,5 @@ def finances(request):
         payment.incoming=payment.amount if payment.kind in ('customer','operator_refund') else Decimal('0')
         payment.outgoing=payment.amount if payment.kind in ('operator','customer_refund') else Decimal('0')
         incoming+=payment.incoming;outgoing+=payment.outgoing
-    return render(request,'crm/finances.html',{'rows':rows,'count':len(rows),'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'dateform':f,'kinds':Payment.KINDS})
+    from .models import payment_operation_choices
+    return render(request,'crm/finances.html',{'rows':rows,'count':len(rows),'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'dateform':f,'kinds':payment_operation_choices()})

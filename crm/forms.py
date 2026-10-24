@@ -50,6 +50,8 @@ class PaymentForm(forms.ModelForm):
         localized_fields=['amount','rate']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        from .models import payment_operation_choices
+        self.fields['kind'].choices=[('','—')]+payment_operation_choices()
         self.fields['currency']=forms.ChoiceField(label='Справочно: валюта оплаты ТО',required=False,initial='RUB',choices=[('','---------')]+[(c.code,str(c)) for c in Currency.objects.all()])
         customer=None
         if self.is_bound:
