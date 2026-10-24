@@ -4,19 +4,48 @@ from string import Formatter
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-class Customer(models.Model):
+class DefaultReference(models.Model):
+    is_default=models.BooleanField('По умолчанию',default=False,help_text='Подставлять в новые документы. В одном справочнике можно выбрать одну запись.')
+    class Meta:
+        abstract=True
+        constraints=[models.UniqueConstraint(fields=['is_default'],condition=models.Q(is_default=True),name='%(app_label)s_%(class)s_one_default')]
+    def save(self,*args,**kwargs):
+        with transaction.atomic():
+            if self.is_default and (kwargs.get('update_fields') is None or 'is_default' in kwargs['update_fields']):
+                type(self).objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
+            super().save(*args,**kwargs)
+    def validate_constraints(self,exclude=None):
+        # Selecting a new default replaces the previous one in save(), atomically.
+        for constraint in self._meta.constraints:
+            if constraint.name.endswith('_one_default'):continue
+            constraint.validate(type(self),self,exclude=exclude)
+
+class Customer(DefaultReference):
+    kind=models.CharField('Тип заказчика',max_length=10,choices=[('person','Физическое лицо'),('company','Юридическое лицо')],default='person')
+    company_name=models.CharField('Наименование организации',max_length=250,blank=True)
+    inn=models.CharField('ИНН',max_length=12,blank=True)
+    kpp=models.CharField('КПП',max_length=9,blank=True)
+    ogrn=models.CharField('ОГРН',max_length=15,blank=True)
+    legal_address=models.TextField('Юридический адрес',blank=True)
+    bank_name=models.CharField('Банк',max_length=250,blank=True)
+    bik=models.CharField('БИК',max_length=9,blank=True)
+    account=models.CharField('Расчётный счёт',max_length=20,blank=True)
+    correspondent_account=models.CharField('Корреспондентский счёт',max_length=20,blank=True)
+    representative=models.CharField('Представитель / контактное лицо',max_length=250,blank=True)
+    representative_basis=models.CharField('Основание полномочий представителя',max_length=250,blank=True)
+    passport_type=models.CharField('Документ',max_length=1,choices=[('1','Паспорт РФ'),('0','Загранпаспорт')],default='1')
     surname=models.CharField('Фамилия',max_length=100,blank=True)
     given_name=models.CharField('Имя',max_length=100,blank=True)
     patronymic=models.CharField('Отчество',max_length=100,blank=True)
     main_phone=models.CharField('Основной телефон',max_length=100,blank=True)
     main_email=models.CharField('Основной email',max_length=250,blank=True)
-    passport_number=models.CharField('Паспорт РФ: серия и номер',max_length=100,blank=True)
-    passport_issued=models.DateField('Паспорт РФ: дата выдачи',null=True,blank=True)
-    passport_issued_by=models.CharField('Паспорт РФ: кем выдан',max_length=500,blank=True)
+    passport_number=models.CharField('Паспорт: серия и номер',max_length=100,blank=True)
+    passport_issued=models.DateField('Паспорт: дата выдачи',null=True,blank=True)
+    passport_issued_by=models.CharField('Паспорт: кем выдан',max_length=500,blank=True)
     passport_code=models.CharField('Паспорт РФ: код подразделения',max_length=50,blank=True)
     name = models.CharField('ФИО заказчика',max_length=250)
     birthday = models.DateField('Дата рождения',null=True,blank=True)
@@ -24,9 +53,10 @@ class Customer(models.Model):
     address = models.TextField('Адрес регистрации',blank=True)
     phones = models.TextField('Дополнительные телефоны (по одному в строке)',blank=True)
     emails = models.TextField('Дополнительные email (по одному в строке)',blank=True)
-    class Meta: verbose_name='Заказчик'; verbose_name_plural='Заказчики'
+    class Meta(DefaultReference.Meta): verbose_name='Заказчик'; verbose_name_plural='Заказчики'
     def save(self,*args,**kwargs):
         full=' '.join(v.strip() for v in (self.surname,self.given_name,self.patronymic) if v.strip())
+        if self.kind=='company':full=self.company_name.strip()
         if full:self.name=full
         if kwargs.get('update_fields') and full:kwargs['update_fields']=set(kwargs['update_fields'])|{'name'}
         super().save(*args,**kwargs)
@@ -45,9 +75,9 @@ def booking_url(template,number):
     except (ValueError,KeyError,IndexError,AttributeError):
         return ''
 
-class NamedReference(models.Model):
+class NamedReference(DefaultReference):
     name=models.CharField('Название',max_length=100,unique=True)
-    class Meta:
+    class Meta(DefaultReference.Meta):
         abstract=True
         ordering=['name']
     def __str__(self): return self.name
@@ -78,7 +108,7 @@ class FuelSurcharge(NamedReference):
     class Meta(NamedReference.Meta):
         verbose_name='Топливный сбор'; verbose_name_plural='Топливные сборы'
 
-class Operator(models.Model):
+class Operator(DefaultReference):
     name = models.CharField('Название',max_length=200,unique=True)
     booking_url_template = models.CharField('Шаблон ссылки на бронь',max_length=1500,blank=True,help_text='Полная ссылка с https:// и {booking} вместо номера. Можно также адрес, заканчивающийся на = или / — номер добавится в конец. Пример: https://agency.pegast.ru/MyAccount/Bookings/?bi={booking}')
     def clean(self):
@@ -92,10 +122,10 @@ class Operator(models.Model):
                 raise ValidationError({'booking_url_template':'Укажите полную ссылку с https:// и {booking} вместо номера, либо адрес, заканчивающийся на = или /.'})
     def booking_link(self,number):
         return booking_url(self.booking_url_template,number)
-    class Meta: verbose_name='Туроператор'; verbose_name_plural='Туроператоры'
+    class Meta(DefaultReference.Meta): verbose_name='Туроператор'; verbose_name_plural='Туроператоры'
     def __str__(self): return self.name
 
-class Tourist(models.Model):
+class Tourist(DefaultReference):
     surname=models.CharField('Фамилия по паспорту',max_length=100,blank=True)
     given_name=models.CharField('Имя по паспорту',max_length=100,blank=True)
     passport_type=models.CharField('Тип паспорта',max_length=1,choices=[('0','Загранпаспорт'),('1','Российский')],blank=True)
@@ -110,7 +140,7 @@ class Tourist(models.Model):
     expires = models.DateField('Действителен до',null=True,blank=True)
     issued_by = models.CharField('Кем выдан',max_length=250,blank=True)
     nationality = models.CharField('Гражданство',max_length=100,blank=True)
-    class Meta: verbose_name='Турист'; verbose_name_plural='Туристы'
+    class Meta(DefaultReference.Meta): verbose_name='Турист'; verbose_name_plural='Туристы'
     def __str__(self): return self.name
 
 class Contract(models.Model):
@@ -257,11 +287,11 @@ def normalize_location(value):
     import unicodedata
     return ' '.join(unicodedata.normalize('NFKC',value).casefold().replace('ё','е').split())
 
-class LocationReference(models.Model):
+class LocationReference(DefaultReference):
     code=models.CharField('Код из исходного справочника',max_length=40,unique=True)
     name=models.CharField('Название',max_length=100,unique=True)
     details=models.JSONField('Дополнительные данные исходного файла',default=dict,blank=True)
-    class Meta:
+    class Meta(DefaultReference.Meta):
         abstract=True
         ordering=['name']
     def __str__(self):return self.name
@@ -281,10 +311,10 @@ class Country(LocationReference):
         verbose_name='Страна'
         verbose_name_plural='Страны'
 
-class Currency(models.Model):
+class Currency(DefaultReference):
     code=models.CharField('Код',max_length=3,unique=True)
     name=models.CharField('Название',max_length=100)
-    class Meta:
+    class Meta(DefaultReference.Meta):
         verbose_name='Валюта'
         verbose_name_plural='Валюты'
         ordering=['code']

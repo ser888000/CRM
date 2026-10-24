@@ -22,7 +22,7 @@ def customer_matches(data):
     exact=[];similar=[]
     incoming_name=normalize_location(data['name'])
     p=contacts(data,'phone');e=contacts(data,'email')
-    for customer in Customer.objects.all():
+    for customer in Customer.objects.filter(kind='person'):
         current={key:getattr(customer,key) for key in ('main_phone','main_email','phones','emails')}
         cp=contacts(current,'phone');ce=contacts(current,'email')
         same_name=normalize_location(customer.name)==incoming_name

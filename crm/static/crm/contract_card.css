@@ -7,3 +7,6 @@
 .field textarea{min-height:0;max-height:160px;overflow:auto;resize:vertical}.line-top:empty{display:none}
 .passport-import{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 0}.passport-import input{max-width:280px}.passport-status{white-space:pre-wrap;font-size:12px}
 @media(max-width:760px){.field-grid:has(.field-main_phone){grid-template-columns:1fr}.field-grid:has(.field-main_phone) .field-phones,.field-grid:has(.field-main_phone) .field-emails{grid-column:1}}
+.field[hidden],.form-row[hidden],.passport-import[hidden]{display:none!important}
+#new-customer-dialog{width:min(1000px,94vw);max-height:90vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:24px;color:var(--ink);background:#fff}#new-customer-dialog::backdrop{background:#102e29aa}.dialog-header{display:flex;justify-content:space-between;align-items:center}.dialog-header button{padding:6px 12px}#new-customer-status{white-space:pre-wrap}
+.passport-import details{flex-basis:100%;width:100%}.passport-import pre{max-height:280px;overflow:auto;font-size:12px}

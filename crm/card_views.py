@@ -141,5 +141,5 @@ def contract_card(request,pk=None):
 
     else:payments=[];tasks=[];lines=[];bookings=[];history=[]
     return render(request,'crm/contract_card.html',{'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
-        'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
+        'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
         'payments':payments,'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})

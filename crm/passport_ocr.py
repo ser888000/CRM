@@ -18,60 +18,44 @@ MAX_BYTES=6*1024*1024
 OCR_LOCK=threading.BoundedSemaphore(1)
 
 
-def iso_date(value):
-    try:return datetime.strptime(value,'%d.%m.%Y').date().isoformat()
-    except ValueError:return ''
+from .passport_parser import iso_date,mrz_digit,parse_passport
+import time
 
+class OCRLanguageError(Exception):pass
 
-def mrz_digit(value):
-    chars='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    return str(sum((0 if ch=='<' else chars.index(ch))*[7,3,1][i%3] for i,ch in enumerate(value))%10)
-
-
-def parse_passport(text,kind):
-    result={}
-    # TD3 international passport: accept only fields with valid check digits.
-    lines=[re.sub(r'\s','',line.upper()) for line in text.splitlines()]
-    for index,line in enumerate(lines[:-1]):
-        if not line.startswith('P<') or len(line)!=44:continue
-        second=lines[index+1]
-        if len(second)!=44 or not re.fullmatch(r'[A-Z0-9<]+',second):continue
-        surname,_,given=line[5:].partition('<<')
-        if kind=='tourist':
-            result.update(surname=surname.replace('<',' ').strip(),given_name=given.replace('<',' ').strip())
-            result['name']=' '.join([result['surname'],result['given_name']]).strip()
-            if mrz_digit(second[:9])==second[9]:result['passport_number']=second[:9].replace('<','')
-            for value,check,field in [(second[13:19],second[19],'birthday'),(second[21:27],second[27],'expires')]:
-                if value.isdigit() and mrz_digit(value)==check:
-                    year=int(value[:2]);year+=(1900 if field=='birthday' and year>datetime.now().year%100 else 2000)
-                    try:result[field]=datetime(year,int(value[2:4]),int(value[4:6])).date().isoformat()
-                    except ValueError:pass
-            if second[20] in 'MF':result['gender']={'M':'male','F':'female'}[second[20]]
-            result['passport_type']='0'
-            result['nationality']=second[10:13].replace('<','')
-        return result
-    # Russian labelled fields. Do not guess names from unlabelled OCR lines.
-    def field(label,pattern):
-        match=re.search(label+r'\s*[:\-]?\s*('+pattern+r')',text,re.I)
-        return match.group(1).strip() if match else ''
-    for key,label in [('surname',r'ФАМИЛИЯ'),('given_name',r'(?<![А-Я])ИМЯ'),('patronymic',r'ОТЧЕСТВО')]:
-        value=field(label,r'[А-ЯЁ][А-ЯЁа-яё\-]+')
-        if value and (kind=='customer' or key!='patronymic'):result[key]=value.title()
-    if result.get('surname') and result.get('given_name'):
-        result['name']=' '.join(result.get(k,'') for k in ('surname','given_name','patronymic')).strip()
-    birthday=field(r'ДАТА\s+РОЖДЕНИЯ',r'\d{2}\.\d{2}\.\d{4}')
-    if birthday and iso_date(birthday):result['birthday']=iso_date(birthday)
-    issued=field(r'ДАТА\s+ВЫДАЧИ',r'\d{2}\.\d{2}\.\d{4}')
-    if issued and iso_date(issued):result['passport_issued' if kind=='customer' else 'issued']=iso_date(issued)
-    code=re.search(r'\b\d{3}-\d{3}\b',text)
-    if code and kind=='customer':result['passport_code']=code.group()
-    number=re.search(r'(?<!\d)(\d{2})\s+(\d{2})\s+(\d{6})(?!\d)',text)
-    if number:result['passport_number']=''.join(number.groups())
-    issued_by=re.search(r'ПАСПОРТ\s+ВЫДАН\s+(.+?)(?=ДАТА\s+ВЫДАЧИ|\d{2}\.\d{2}\.\d{4}|КОД\s+ПОДРАЗДЕЛЕНИЯ)',text,re.I|re.S)
-    if issued_by:
-        value=' '.join(issued_by.group(1).split())
-        if 4<len(value)<=250:result['passport_issued_by' if kind=='customer' else 'issued_by']=value
-    return result
+def recognize_image(image,kind,folder):
+    from PIL import ImageOps,ImageFilter
+    started=time.monotonic();texts=[];successful=[];best={}
+    image.thumbnail((3000,3000))
+    gray=ImageOps.autocontrast(ImageOps.grayscale(image)).filter(ImageFilter.SHARPEN)
+    variants=[(gray,3,'rus+eng'),(gray,6,'eng'),(gray,11,'rus+eng')]
+    lower=gray.crop((0,int(gray.height*.45),gray.width,gray.height))
+    variants.extend([(lower,6,'eng'),(lower,11,'rus+eng')])
+    # EXIF covers most phones; these passes also handle scans saved sideways/upside down.
+    for rotation in (180,90,270):
+        rotated=gray.rotate(rotation,expand=True)
+        variants.extend([(rotated,6,'eng'),(rotated,11,'rus+eng')])
+    for index,(variant,psm,lang) in enumerate(variants):
+        remaining=42-(time.monotonic()-started)
+        if remaining<2:break
+        path=Path(folder)/f'page-{index}.png';variant.save(path)
+        try:
+            command=['tesseract',str(path),'stdout','-l',lang,'--psm',str(psm)]
+            if lang=='eng':command+=['-c','tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<']
+            process=subprocess.run(command,capture_output=True,text=True,timeout=min(8,remaining),check=True,env={**os.environ,'OMP_THREAD_LIMIT':'1'})
+        except (subprocess.TimeoutExpired,subprocess.CalledProcessError):continue
+        if "Failed loading language 'rus'" in process.stderr:raise OCRLanguageError
+        text=process.stdout[:20000];texts.append(text)
+        fields=parse_passport(text,kind)
+        if fields:successful.append((len(fields),text))
+        # Keep complete name parts from the same pass, avoiding cross-pass mixed names.
+        if fields.get('surname') and fields.get('given_name'):
+            for key in ('surname','given_name','patronymic','name'):best.pop(key,None)
+            best.update(fields)
+        else:
+            for key,value in fields.items():best.setdefault(key,value)
+        if best.get('surname') and best.get('given_name') and best.get('passport_number') and best.get('birthday'):break
+    return best,max(successful,key=lambda item:item[0])[1] if successful else max(texts,key=len,default='')
 
 
 @login_required
@@ -97,12 +81,11 @@ def recognize(request):
         with Image.open(io.BytesIO(upload.read())) as image:
             if image.format not in ('JPEG','PNG') or image.width*image.height>16_000_000:raise ValueError
             image=ImageOps.exif_transpose(image).convert('RGB')
-            image.thumbnail((2500,2500))
             with tempfile.TemporaryDirectory(prefix='crm-passport-') as folder:
-                path=Path(folder)/'page.png';image.save(path)
-                process=subprocess.run(['tesseract',str(path),'stdout','-l','rus+eng','--psm','3'],capture_output=True,text=True,timeout=35,check=True,env={**os.environ,'OMP_THREAD_LIMIT':'1'})
-        fields=parse_passport(process.stdout,kind)
-        return JsonResponse({'fields':fields,'message':'Проверьте распознанные поля перед сохранением. Незаполненные поля внесите вручную.' if fields else 'Надёжно распознать поля не удалось. Попробуйте чёткое фото разворота паспорта без бликов или внесите данные вручную.'})
+                fields,recognized_text=recognize_image(image,kind,folder)
+        return JsonResponse({'fields':fields,'recognized_text':recognized_text,'message':'Проверьте распознанные поля перед сохранением. Незаполненные поля внесите вручную.' if fields else 'Не удалось выделить поля. Ниже доступен распознанный текст: проверьте, видит ли программа буквы и машиночитаемые строки. Можно загрузить отдельно страницу с данными.'})
+    except OCRLanguageError:
+        return JsonResponse({'error':'На сервере отсутствует русский язык Tesseract. Выполните deploy/install-ocr.sh.'},status=503)
     except ImportError:
         return JsonResponse({'error':'Обновите зависимости сервера через deploy/install-ocr.sh.'},status=503)
     except (OSError,ValueError,Image.DecompressionBombError,Image.DecompressionBombWarning,UnidentifiedImageError):

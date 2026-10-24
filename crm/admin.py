@@ -17,6 +17,18 @@ from django.utils.html import format_html_join
 
 class AuditedAdmin(admin.ModelAdmin):
     formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
+    def get_list_display(self,request):
+        fields=list(super().get_list_display(request))
+        if hasattr(self.model,'is_default') and 'is_default' not in fields:fields.append('is_default')
+        return fields
+    def get_form(self,request,obj=None,**kwargs):
+        base=super().get_form(request,obj,**kwargs)
+        from .reference_defaults import apply_reference_defaults
+        class ReferenceDefaultForm(base):
+            def __init__(self,*args,**kwargs):
+                super().__init__(*args,**kwargs)
+                apply_reference_defaults(self,kwargs.get('initial'))
+        return ReferenceDefaultForm
     def save_model(self,request,obj,form,change):
         old=type(obj).objects.filter(pk=obj.pk).values().first() if change else None
         super().save_model(request,obj,form,change)
@@ -30,6 +42,8 @@ class AuditedAdmin(admin.ModelAdmin):
         for obj in queryset: self.delete_model(request,obj)
 
 class LineInline(admin.TabularInline):
+    from .card_forms import LineCardForm
+    form=LineCardForm
     formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     model=ContractLine
     extra=1
@@ -64,6 +78,8 @@ def task_booking_links(task):
 
 
 class PaymentInline(admin.TabularInline):
+    from .card_forms import CardPaymentForm
+    form=CardPaymentForm
     formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     model=Payment
     extra=0
@@ -148,10 +164,11 @@ class ContractAdmin(AuditedAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(AuditedAdmin):
+    list_editable=['is_default']
     from .forms import CustomerForm
     form=CustomerForm
-    list_display=['name','main_phone','main_email','phones','emails']
-    search_fields=['name','main_phone','main_email','phones','emails']
+    list_display=['name','kind','inn','main_phone','main_email','phones','emails','is_default']
+    search_fields=['name','company_name','inn','representative','main_phone','main_email','phones','emails']
     readonly_fields=['contracts_link']
     @admin.display(description='Договоры заказчика')
     def contracts_link(self,obj):
@@ -159,17 +176,20 @@ class CustomerAdmin(AuditedAdmin):
         return 'Сохраните заказчика'
 @admin.register(Tourist)
 class TouristAdmin(AuditedAdmin):
-    list_display=['name','birthday','customer']
+    list_editable=['is_default']
+    list_display=['name','birthday','customer','is_default']
     search_fields=['name']
 @admin.register(Operator)
 class OperatorAdmin(AuditedAdmin):
+    list_editable=['is_default']
     search_fields=['name']
-    list_display=['name','booking_url_template']
+    list_display=['name','booking_url_template','is_default']
 
 @admin.register(ContractType,PaymentMethod,Meal,Transfer,Insurance,FuelSurcharge)
 class ReferenceAdmin(AuditedAdmin):
+    list_editable=['is_default']
     search_fields=['name']
-    list_display=['name']
+    list_display=['name','is_default']
 @admin.register(Payment)
 class PaymentAdmin(AuditedAdmin):
     change_list_template='admin/crm/payment/change_list.html'
@@ -262,7 +282,8 @@ admin.site.index_title='Управление агентством'
 
 @admin.register(DepartureCity,Country)
 class LocationAdmin(AuditedAdmin):
-    list_display=['name','code']
+    list_editable=['is_default']
+    list_display=['name','code','is_default']
     search_fields=['name','code']
     readonly_fields=['details']
 
@@ -275,5 +296,6 @@ def source_table(obj,key):
 
 @admin.register(Currency)
 class CurrencyAdmin(AuditedAdmin):
-    list_display=['code','name']
+    list_editable=['is_default']
+    list_display=['code','name','is_default']
     search_fields=['code','name']

@@ -182,7 +182,7 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             # Isolate real changes only; selecting an unchanged section must not
             # create another customer card after successful reuse on import.
             if customer.contract_set.exclude(pk=contract.pk).exists():
-                customer.pk=None;customer.save();contract.customer=customer
+                customer.pk=None;customer.is_default=False;customer.save();contract.customer=customer
             for k,v in n['customer'].items():setattr(customer,k,v)
             customer.save()
     if 'tour' in groups and not new:
@@ -206,7 +206,7 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             line=contract.lines.filter(source_tourist_key=key).first()
             if line and line.tourist_id:
                 tourist=line.tourist
-                if tourist.contractline_set.exclude(contract=contract).exists():tourist.pk=None
+                if tourist.contractline_set.exclude(contract=contract).exists():tourist.pk=None;tourist.is_default=False
                 for k,v in person.items():setattr(tourist,k,v)
                 tourist.customer=contract.customer if person['is_customer'] else None
                 tourist.save();line.tourist=tourist;line.save()

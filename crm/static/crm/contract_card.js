@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  tabs.forEach(tab=>tab.addEventListener('click',e=>{e.preventDefault();activate(tab.dataset.tab);const url=new URL(location.href);url.searchParams.set('tab',tab.dataset.tab);history.replaceState(null,'',url);}));
  const forms=[...document.querySelectorAll('form[data-unsaved]')];let leaving=false;
  forms.forEach(form=>{form.addEventListener('input',()=>form.dataset.dirty='1');form.addEventListener('change',()=>form.dataset.dirty='1');form.addEventListener('submit',e=>{
+  if(form.hasAttribute('data-async'))return;
   if(forms.some(f=>f!==form&&f.dataset.dirty==='1')&&!confirm('В других разделах есть несохранённые правки. Сохранить только этот раздел?')){e.preventDefault();return;}leaving=true;
  });});
  document.querySelectorAll('.cancel-changes').forEach(a=>a.addEventListener('click',e=>{if(forms.some(f=>f.dataset.dirty==='1')&&!confirm('Выйти без сохранения изменений?'))e.preventDefault();else leaving=true;}));

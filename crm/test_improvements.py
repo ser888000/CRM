@@ -52,7 +52,7 @@ class JournalImprovementTests(TestCase):
         self.assertTrue(form.is_valid(),form.errors);self.assertEqual(form.save().name,'Иванов Иван Иванович')
         admin=self.client.get('/admin/crm/customer/add/')
         self.assertContains(admin,'crm/customer_name.js')
-        self.assertEqual(list(CustomerForm().fields)[:4],['surname','given_name','patronymic','name'])
+        self.assertEqual([k for k in CustomerForm().fields if k in ('surname','given_name','patronymic','name')],['surname','given_name','patronymic','name'])
         self.assertEqual(CustomerCardForm().fields['phones'].widget.attrs['rows'],3)
     def test_defaults_suggestions_and_task_empty_section(self):
         self.assertEqual(CardContractForm()['source_currency'].value(),'RUB')

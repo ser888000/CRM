@@ -3,6 +3,7 @@ from .forms import ContractForm,CustomerForm
 from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskTemplate,Currency
 from .services import task_due
 from .widgets import MoneyInput
+from .reference_defaults import apply_reference_defaults
 
 class CardContractForm(ContractForm):
     version=forms.CharField(widget=forms.HiddenInput,required=False)
@@ -21,7 +22,7 @@ class CardContractForm(ContractForm):
 class CustomerCardForm(CustomerForm):
     class Meta:
         model=Customer
-        fields=['name','surname','given_name','patronymic','birthday','main_phone','main_email','phones','emails','address','passport_number','passport_issued','passport_issued_by','passport_code','passport']
+        fields=['kind','company_name','inn','kpp','ogrn','legal_address','bank_name','bik','account','correspondent_account','representative','representative_basis','passport_type','name','surname','given_name','patronymic','birthday','main_phone','main_email','phones','emails','address','passport_number','passport_issued','passport_issued_by','passport_code','passport']
         widgets={'birthday':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'passport_issued':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
 
 class TouristCardForm(forms.ModelForm):
@@ -39,6 +40,7 @@ class CardPaymentForm(forms.ModelForm):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['currency']=forms.ChoiceField(label='Валюта оплаты ТО (справочно)',required=False,initial='RUB',choices=[('','—')]+[(c.code,str(c)) for c in Currency.objects.all()])
+        apply_reference_defaults(self,kwargs.get('initial'))
 
 class BookingCardForm(forms.ModelForm):
     class Meta:
@@ -46,6 +48,9 @@ class BookingCardForm(forms.ModelForm):
         fields=['number']
 
 class LineCardForm(forms.ModelForm):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        apply_reference_defaults(self,kwargs.get('initial'))
     class Meta:
         model=ContractLine
         fields=['tourist','description','amount']
@@ -53,6 +58,9 @@ class LineCardForm(forms.ModelForm):
         localized_fields=['amount']
 
 class TaskCardForm(forms.ModelForm):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        apply_reference_defaults(self,kwargs.get('initial'))
     class Meta:
         model=Task
         fields=['title','description','due','employee','done']
