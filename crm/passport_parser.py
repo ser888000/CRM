@@ -14,10 +14,59 @@ def mrz_digit(value):
     return str(sum((0 if ch=='<' else chars.index(ch))*[7,3,1][i%3] for i,ch in enumerate(value))%10)
 
 
+# GOST transliteration for the machine-readable zone of an internal RF passport.
+RF_LETTERS=dict(zip('ABVGDE2JZIQKLMNOPRSTUFHC34WX Y9678'.replace(' ',''),
+                    'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ'))
+
+def rf_mrz_fields(lines,kind):
+    numeric=lambda value:value.translate(str.maketrans({'O':'0','I':'1','L':'1','B':'8'}))
+    for index,first in enumerate(lines[:-1]):
+        if not first.startswith('PNRUS'):continue
+        names=first[5:].rstrip('<')
+        if not re.fullmatch(r'[A-Z0-9<]+',names):continue
+        surname,sep,rest=names.partition('<<');parts=[v for v in rest.split('<') if v]
+        if not sep or not surname or not parts:continue
+        second=lines[index+1]
+        if len(second)!=44:continue
+        birth=numeric(second[13:19]);birth_check=numeric(second[19])
+        number=numeric(second[:9]);number_check=numeric(second[9])
+        valid_birth=birth.isdigit() and mrz_digit(birth)==birth_check
+        valid_number=number.isdigit() and mrz_digit(number)==number_check
+        if not valid_birth and not valid_number:continue
+        # Reject invalid name codes rather than guessing the person's spelling.
+        def decode(value):
+            return ''.join(RF_LETTERS[ch] for ch in value).title() if all(ch in RF_LETTERS for ch in value) else ''
+        result={'passport_type':'1'}
+        if decode(surname) and decode(parts[0]):
+            result.update(surname=decode(surname),given_name=decode(parts[0]))
+            if kind=='customer' and len(parts)>1 and decode(parts[1]):result['patronymic']=decode(parts[1])
+        if valid_birth:
+            year=int(birth[:2])+(1900 if int(birth[:2])>date.today().year%100 else 2000)
+            try:result['birthday']=date(year,int(birth[2:4]),int(birth[4:6])).isoformat()
+            except ValueError:pass
+        # Additional data contains series digit 4, issue date and authority code.
+        extra=numeric(second[28:41])+second[41]
+        extra_check=numeric(second[42])
+        if re.fullmatch(r'[0-9]{13}<',extra) and mrz_digit(extra)==extra_check:
+            if valid_number:result['passport_number']=number[:3]+extra[0]+number[3:]
+            issued=extra[1:7];year=int(issued[:2])+(1900 if int(issued[:2])>date.today().year%100 else 2000)
+            try:result['passport_issued' if kind=='customer' else 'issued']=date(year,int(issued[2:4]),int(issued[4:6])).isoformat()
+            except ValueError:pass
+            if kind=='customer':result['passport_code']=extra[7:10]+'-'+extra[10:13]
+        if kind=='tourist':
+            gender=second[20].translate(str.maketrans({'М':'M','Ф':'F'}))
+            if gender in 'MF':result['gender']={'M':'male','F':'female'}[gender]
+            result['nationality']='Россия'
+        return result
+    return {}
+
+
 def mrz_fields(text,kind):
     # OCR often prints spaces between MRZ characters or omits trailing fillers.
     lines=[re.sub(r'\s','',line.upper().replace('«','<<').replace('‹','<').replace('＜','<')) for line in text.splitlines()]
     lines=[line for line in lines if line]
+    domestic=rf_mrz_fields(lines,kind)
+    if domestic:return domestic
     for i,first in enumerate(lines[:-1]):
         if not re.fullmatch(r'P<[A-Z<]{3}[A-Z<]{20,}',first) or len(first)>44:continue
         second=lines[i+1]
@@ -48,13 +97,15 @@ def mrz_fields(text,kind):
     return {}
 
 
-def parse_passport(text,kind):
-    result={};mrz=mrz_fields(text,kind)
+def parse_passport(text,kind,include_mrz=True):
+    result={};mrz=mrz_fields(text,kind) if include_mrz else {}
     text=text.replace('\r','\n')
     # Printed labels may be bilingual and use punctuation or newlines.
     for key,label in [('surname',r'ФАМИЛИЯ'),('given_name',r'(?<![А-Я])ИМЯ'),('patronymic',r'ОТЧЕСТВО')]:
         pattern=label+r'(?:\s*[/|:]\s*(?:SURNAME|GIVEN\s+NAMES?|PATRONYMIC))?\s*[:.\-]?\s*([А-ЯЁ][А-ЯЁ\-]{1,50})\b'
         match=re.search(pattern,text,re.I)
+        if not match:
+            match=re.search(r'(?:^|\n)\s*([А-ЯЁ][А-ЯЁ\-]{1,49})\s*\n\s*'+label+r'\b',text,re.I)
         if match and match[1].upper() not in {'ИМЯ','ОТЧЕСТВО','ФАМИЛИЯ','ДАТА','РОССИЙСКАЯ','ПОЛ','РОЖДЕНИЯ'}:
             if kind=='customer' or key!='patronymic':result[key]=match[1].title()
     date_pattern=r'\d{2}\s*[. /-]\s*\d{2}\s*[. /-]\s*\d{4}'
@@ -70,8 +121,13 @@ def parse_passport(text,kind):
         value=' '.join(issued_by[1].split())
         if 4<len(value)<=250:result['passport_issued_by' if kind=='customer' else 'issued_by']=value
     if mrz:
+        if mrz.get('passport_type')=='1':
+            # RF layouts may print labels below the values. Prefer clearly read
+            # Cyrillic name parts to a damaged transliteration in the MRZ.
+            for key in ('surname','given_name','patronymic'):
+                if result.get(key):mrz[key]=result[key]
         # A customer's Russian printed name takes precedence over MRZ Latin names.
-        if kind=='customer' and result.get('surname') and result.get('given_name'):
+        if kind=='customer' and mrz.get('passport_type')!='1' and result.get('surname') and result.get('given_name'):
             mrz.pop('surname',None);mrz.pop('given_name',None);mrz.pop('name',None)
         result.update(mrz)
     if result.get('surname') and result.get('given_name'):

@@ -54,7 +54,14 @@ def recognize_image(image,kind,folder):
             best.update(fields)
         else:
             for key,value in fields.items():best.setdefault(key,value)
-        if best.get('surname') and best.get('given_name') and best.get('passport_number') and best.get('birthday'):break
+        if index>0 and best.get('surname') and best.get('given_name') and best.get('passport_number') and best.get('birthday'):break
+    if best.get('passport_type')=='1':
+        for text in texts:
+            printed=parse_passport(text,kind,include_mrz=False)
+            for key in ('surname','given_name','patronymic'):
+                if printed.get(key):best[key]=printed[key]
+        if best.get('surname') and best.get('given_name'):
+            best['name']=' '.join(best.get(key,'') for key in ('surname','given_name','patronymic') if best.get(key))
     return best,max(successful,key=lambda item:item[0])[1] if successful else max(texts,key=len,default='')
 
 
@@ -83,7 +90,7 @@ def recognize(request):
             image=ImageOps.exif_transpose(image).convert('RGB')
             with tempfile.TemporaryDirectory(prefix='crm-passport-') as folder:
                 fields,recognized_text=recognize_image(image,kind,folder)
-        return JsonResponse({'fields':fields,'recognized_text':recognized_text,'message':'Проверьте распознанные поля перед сохранением. Незаполненные поля внесите вручную.' if fields else 'Не удалось выделить поля. Ниже доступен распознанный текст: проверьте, видит ли программа буквы и машиночитаемые строки. Можно загрузить отдельно страницу с данными.'})
+        return JsonResponse({'fields':fields,'recognized_text':recognized_text,'message':'Проверьте распознанные поля перед сохранением, особенно ФИО: в нём возможны ошибки отдельных букв. Незаполненные поля внесите вручную.' if fields else 'Не удалось выделить поля. Ниже доступен распознанный текст: проверьте, видит ли программа буквы и машиночитаемые строки. Можно загрузить отдельно страницу с данными.'})
     except OCRLanguageError:
         return JsonResponse({'error':'На сервере отсутствует русский язык Tesseract. Выполните deploy/install-ocr.sh.'},status=503)
     except ImportError:
