@@ -1,5 +1,5 @@
 from django import forms
-from .models import Contract,TaskTemplate,Payment,Customer,DepartureCity,Country,Currency,Meal,Transfer,Insurance,FuelSurcharge
+from .models import Contract,TaskTemplate,Payment,Customer,Tourist,DepartureCity,Country,Currency,Meal,Transfer,Insurance,FuelSurcharge
 from .services import task_due
 from .widgets import LocationInput,MoneyInput
 from .reference_defaults import apply_reference_defaults
@@ -85,7 +85,7 @@ class CustomerForm(forms.ModelForm):
         self.fields['passport_type'].required=False
         self.fields['name'].required=False
         self.fields['name'].widget.attrs['readonly']=True
-        self.order_fields(['kind','company_name','inn','kpp','ogrn','legal_address','bank_name','bik','account','correspondent_account','representative','representative_basis','surname','given_name','patronymic','name','birthday','main_phone','phones','main_email','emails'])
+        self.order_fields(['kind','company_name','inn','kpp','ogrn','legal_address','bank_name','bik','account','correspondent_account','representative','representative_basis','surname','given_name','patronymic','name','birthday','main_phone','phones','main_email','emails','passport_type','passport_number','passport_issued','passport_issued_by','passport_code','address','passport'])
         for field in self.fields.values():
             if isinstance(field.widget,forms.Textarea):field.widget.attrs['rows']=3
     def clean(self):
@@ -99,6 +99,25 @@ class CustomerForm(forms.ModelForm):
         for key,lengths in [('inn',(10,12)),('kpp',(9,)),('ogrn',(13,15)),('bik',(9,)),('account',(20,)),('correspondent_account',(20,))]:
             value=data.get(key,'').strip()
             if data['kind']=='company' and value and (not re.fullmatch(r'[0-9]+',value) or len(value) not in lengths):self.add_error(key,'Проверьте количество цифр: '+', '.join(map(str,lengths))+'.')
+        return data
+    class Media:
+        js=['crm/customer_name.js']
+
+
+class TouristForm(forms.ModelForm):
+    class Meta:
+        model=Tourist
+        fields='__all__'
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.fields['name'].required=False
+        self.fields['name'].widget.attrs.update({'readonly':True,'data-person-name':'tourist'})
+        self.order_fields(['surname','given_name','name'])
+    def clean(self):
+        data=super().clean()
+        full=' '.join(data.get(key,'').strip() for key in ('surname','given_name') if data.get(key,'').strip())
+        data['name']=full or data.get('name','').strip()
+        if not data['name']:self.add_error('surname','Укажите фамилию и имя туриста.')
         return data
     class Media:
         js=['crm/customer_name.js']

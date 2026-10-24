@@ -49,7 +49,7 @@ class Customer(DefaultReference):
     passport_code=models.CharField('Паспорт РФ: код подразделения',max_length=50,blank=True)
     name = models.CharField('ФИО заказчика',max_length=250)
     birthday = models.DateField('Дата рождения',null=True,blank=True)
-    passport = models.TextField('Паспортные данные',blank=True)
+    passport = models.TextField('Примечание',blank=True)
     address = models.TextField('Адрес регистрации',blank=True)
     phones = models.TextField('Дополнительные телефоны (по одному в строке)',blank=True)
     emails = models.TextField('Дополнительные email (по одному в строке)',blank=True)
@@ -141,6 +141,12 @@ class Tourist(DefaultReference):
     issued_by = models.CharField('Кем выдан',max_length=250,blank=True)
     nationality = models.CharField('Гражданство',max_length=100,blank=True)
     class Meta(DefaultReference.Meta): verbose_name='Турист'; verbose_name_plural='Туристы'
+    def save(self,*args,**kwargs):
+        full=' '.join(value.strip() for value in (self.surname,self.given_name) if value.strip())
+        if full:
+            self.name=full
+            if kwargs.get('update_fields') is not None:kwargs['update_fields']=set(kwargs['update_fields'])|{'name'}
+        super().save(*args,**kwargs)
     def __str__(self): return self.name
 
 class Contract(models.Model):
@@ -196,6 +202,10 @@ class Contract(models.Model):
     def profit(self): return self.amount-self.cost
     @property
     def debt(self): return self.amount-self.paid
+    @property
+    def commission_percent(self):
+        amount=self.amount
+        return (amount-self.cost)/amount*Decimal('100') if amount else None
 
 class Booking(models.Model):
     contract = models.ForeignKey(Contract,on_delete=models.CASCADE,related_name='bookings')

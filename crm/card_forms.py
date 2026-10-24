@@ -1,5 +1,5 @@
 from django import forms
-from .forms import ContractForm,CustomerForm
+from .forms import ContractForm,CustomerForm,TouristForm
 from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskTemplate,Currency
 from .services import task_due
 from .widgets import MoneyInput
@@ -25,7 +25,7 @@ class CustomerCardForm(CustomerForm):
         fields=['kind','company_name','inn','kpp','ogrn','legal_address','bank_name','bik','account','correspondent_account','representative','representative_basis','passport_type','name','surname','given_name','patronymic','birthday','main_phone','main_email','phones','emails','address','passport_number','passport_issued','passport_issued_by','passport_code','passport']
         widgets={'birthday':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'passport_issued':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
 
-class TouristCardForm(forms.ModelForm):
+class TouristCardForm(TouristForm):
     class Meta:
         model=Tourist
         fields=['name','surname','given_name','gender','birthday','passport_type','passport_number','issued','expires','issued_by','birthcountry','nationality','is_customer']

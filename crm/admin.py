@@ -176,6 +176,8 @@ class CustomerAdmin(AuditedAdmin):
         return 'Сохраните заказчика'
 @admin.register(Tourist)
 class TouristAdmin(AuditedAdmin):
+    from .forms import TouristForm
+    form=TouristForm
     list_editable=['is_default']
     list_display=['name','birthday','customer','is_default']
     search_fields=['name']
