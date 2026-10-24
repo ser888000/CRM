@@ -36,7 +36,10 @@ for args in [('migrate',),('seed_templates',),('collectstatic','--noinput'),('ch
 PY
 chown -R aborigen-crm:aborigen-crm /var/lib/aborigen-crm
 install -m 644 deploy/aborigen-crm.service /etc/systemd/system/aborigen-crm.service
+install -m 644 deploy/aborigen-crm-cleanup.service /etc/systemd/system/aborigen-crm-cleanup.service
+install -m 644 deploy/aborigen-crm-cleanup.timer /etc/systemd/system/aborigen-crm-cleanup.timer
 systemctl daemon-reload
+systemctl enable --now aborigen-crm-cleanup.timer
 systemctl enable --now aborigen-crm
 systemctl restart aborigen-crm
 systemctl status aborigen-crm --no-pager

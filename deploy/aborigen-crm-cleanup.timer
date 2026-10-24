@@ -1,0 +1,8 @@
+[Unit]
+Description=Hourly cleanup of expired CRM import previews
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+[Install]
+WantedBy=timers.target

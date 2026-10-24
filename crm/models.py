@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 from urllib.parse import quote, urlsplit
 from string import Formatter
@@ -343,3 +344,23 @@ class Currency(DefaultReference):
         verbose_name_plural='Валюты'
         ordering=['code']
     def __str__(self):return f'{self.code} · {self.name}'
+
+
+class TourvisorBatch(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    owner=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE)
+    created_at=models.DateTimeField(auto_now_add=True)
+    expires_at=models.DateTimeField()
+    state=models.CharField(max_length=12,default='draft',choices=[('draft','Предпросмотр'),('running','Загрузка'),('finished','Завершено')])
+
+class TourvisorBatchRow(models.Model):
+    batch=models.ForeignKey(TourvisorBatch,on_delete=models.CASCADE,related_name='rows')
+    source_id=models.CharField(max_length=40)
+    payload=models.JSONField(default=dict,editable=False)
+    plan=models.JSONField(default=dict,editable=False)
+    state=models.CharField(max_length=10,default='draft',choices=[('draft','Не выбрана'),('queued','В очереди'),('done','Создан'),('error','Ошибка')])
+    message=models.CharField(max_length=500,blank=True)
+    contract=models.ForeignKey(Contract,on_delete=models.SET_NULL,null=True,blank=True)
+    class Meta:
+        ordering=['pk']
+        constraints=[models.UniqueConstraint(fields=['batch','source_id'],name='unique_batch_online_order')]

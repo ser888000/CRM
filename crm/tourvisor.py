@@ -19,16 +19,14 @@ class NoRedirect(request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
 @sensitive_variables()
-def fetch_order(order_id):
-    if not re.fullmatch(r'[0-9]{1,20}',str(order_id)):
-        raise TourvisorError('Укажите числовой ID онлайн-заявки.')
+def _fetch_online_data(parameters,max_bytes=2000000):
     key=os.getenv('TOURVISOR_API_KEY')
     if not key:raise TourvisorError('На сервере не настроен ключ TOURVISOR_API_KEY. Обратитесь к администратору.')
-    url='https://tourvisor.ru/xml/ordersonline.php?'+parse.urlencode({'authkey':key,'id':order_id,'format':'json'})
+    url='https://tourvisor.ru/xml/ordersonline.php?'+parse.urlencode({'authkey':key,'format':'json',**parameters})
     try:
         with request.build_opener(NoRedirect()).open(url,timeout=25) as response:
-            raw=response.read(2000001)
-        if len(raw)>2000000:raise ValueError
+            raw=response.read(max_bytes+1)
+        if len(raw)>max_bytes:raise ValueError
         data=json.loads(raw)
     except error.HTTPError as exc:
         if exc.code in (401,403):raise TourvisorError('Турвизор отклонил доступ. Проверьте API-ключ и права.') from None
@@ -41,14 +39,43 @@ def fetch_order(order_id):
         if isinstance(e,dict) and 'authorisation' in str(e.get('errormessage','')).lower():
             raise TourvisorError('Турвизор отклонил API-ключ. Проверьте ключ и права доступа.')
         raise TourvisorError('Турвизор вернул ошибку. Попробуйте позже. Данные CRM не изменены.')
-    orders=data.get('orders',{})
-    entries=orders.get('order',[]) if isinstance(orders,dict) else []
+    return data
+
+
+def _online_entries(data):
+    orders=data.get('orders')
+    if not isinstance(orders,dict):raise TourvisorError('Турвизор вернул неожиданный список онлайн-заявок. Повторите позже.')
+    entries=orders.get('order',[])
+    if entries in (None,''):entries=[]
     if isinstance(entries,dict):entries=[entries]
-    if entries in ([],None,''):raise TourvisorError('Онлайн-заявка с таким ID не найдена.')
-    if not isinstance(entries,list) or len(entries)!=1 or not isinstance(entries[0],dict) or str(entries[0].get('id'))!=str(order_id):
+    if not isinstance(entries,list) or not all(isinstance(v,dict) for v in entries):
+        raise TourvisorError('Турвизор вернул неожиданный список онлайн-заявок. Повторите позже.')
+    return entries
+
+
+@sensitive_variables()
+def fetch_order(order_id):
+    if not re.fullmatch(r'[0-9]{1,20}',str(order_id)):
+        raise TourvisorError('Укажите числовой ID онлайн-заявки.')
+    entries=_online_entries(_fetch_online_data({'id':order_id}))
+    if not entries:raise TourvisorError('Онлайн-заявка с таким ID не найдена.')
+    if len(entries)!=1 or str(entries[0].get('id'))!=str(order_id):
         raise TourvisorError('Турвизор вернул неожиданный состав заявки. Данные CRM не изменены.')
     normalize_order(entries[0])
     return entries[0]
+
+
+@sensitive_variables()
+def fetch_orders(limit=25,lastid=''):
+    if limit not in (25,50,100) or (lastid and not re.fullmatch(r'[0-9]{1,20}',str(lastid))):
+        raise TourvisorError('Выберите 25, 50 или 100 заявок и числовой начальный ID.')
+    parameters={'limit':limit}
+    if lastid:parameters['lastid']=lastid
+    entries=_online_entries(_fetch_online_data(parameters,max_bytes=8000000))
+    ids=[str(v.get('id','')) for v in entries]
+    if len(entries)>limit or len(ids)!=len(set(ids)) or any(not re.fullmatch(r'[0-9]{1,20}',v) for v in ids):
+        raise TourvisorError('Турвизор вернул неожиданный состав списка. Данные CRM не изменены.')
+    return entries
 
 def day(value,required=False):
     if value in ('',None):

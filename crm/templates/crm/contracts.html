@@ -1,6 +1,6 @@
 {% extends 'crm/base.html' %}{% load static %}{% block extra_head %}<link rel="stylesheet" href="{% static 'crm/journal.css' %}">{% endblock %}{% block content %}
 <h1>Договоры</h1>
-<a class="button" href="{% url 'contract_new' %}">+ Новый договор</a> <a class="button" href="{% url 'tourvisor_import' %}">Импорт из Турвизора</a>
+<a class="button" href="{% url 'contract_new' %}">+ Новый договор</a> <a class="button" href="{% url 'tourvisor_import' %}">Импорт из Турвизора</a> <a class="button secondary" href="{% url 'tourvisor_batch' %}">Групповая загрузка</a>
 <form id="journal-filters" method="get">
 <div class="filters"><input name="customer" placeholder="Заказчик" aria-label="Заказчик" value="{{ request.GET.customer }}"><input name="email" placeholder="E-mail" aria-label="E-mail" value="{{ request.GET.email }}"><input name="phone" placeholder="Телефон" aria-label="Телефон" value="{{ request.GET.phone }}"></div>
 <div class="filters"><label>Дата договора с <input type="date" name="start" value="{{ start_value }}"></label><label>по <input type="date" name="end" value="{{ end_value }}"></label><button name="period" value="today">Сегодня</button><button name="period" value="month">Месяц (текущий)</button><button>Применить</button><a href="{% url 'contracts' %}?reset=1">Сбросить все фильтры</a></div>{{ dateform.errors }}

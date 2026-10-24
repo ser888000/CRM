@@ -1,0 +1,29 @@
+{% extends 'crm/base.html' %}{% load static money %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'crm/contract_card.css' %}"><link rel="stylesheet" href="{% static 'crm/batch.css' %}">{% endblock %}
+{% block content %}
+<h1>Групповая загрузка из Турвизора</h1>
+<p class="muted">Создание новых договоров из онлайн-заявок. Существующие договоры сверяются и обновляются поштучно. Платежи вносятся в CRM отдельно.</p>
+<a href="{% url 'tourvisor_import' %}">Поштучный импорт и сверка →</a>
+{% if not batch %}
+<form method="post" class="section-card batch-lookup">{% csrf_token %}{{ lookup.as_p }}<button>Получить список</button></form>
+<p class="muted">API возвращает последние 25–100 заявок. Полученный список может содержать не всю историю. Загрузка списка не создаёт договоры.</p>
+{% if batches %}<article class="section-card"><h2>Недавние списки</h2>{% for b in batches %}<p><a href="{% url 'tourvisor_batch_detail' b.pk %}">{{ b.created_at|date:'d.m.Y H:i' }} · {{ b.get_state_display }}</a></p>{% endfor %}</article>{% endif %}
+{% else %}
+<p><a href="{% url 'tourvisor_batch' %}">← Получить другой список</a></p>
+<p class="muted">Получено {{ batch.created_at|date:'d.m.Y H:i' }}. Предпросмотр действует до {{ batch.expires_at|date:'H:i' }}. После изменения заявки в Турвизоре загрузите список заново.</p>
+{% if expired %}<div class="message error">Предпросмотр устарел. Данные черновика очищены. Получите новый список; созданные договоры сохраняются.</div>
+{% else %}
+<div class="batch-progress" data-batch="{{ batch.pk }}" data-step-url="{% url 'tourvisor_batch_step' batch.pk %}" data-auto="{{ auto_run|yesno:'1,0' }}"><strong>Создано / уже создано: <span data-count="done">{{ counts.done }}</span></strong><span>Ошибок: <span data-count="error">{{ counts.error }}</span></span><span>В очереди: <span data-count="queued">{{ counts.queued }}</span></span>{% if batch.state == 'running' %}<button type="button" id="batch-resume">Продолжить загрузку</button><button type="button" id="batch-pause" hidden>Пауза</button>{% endif %}<p id="batch-status" role="status">{% if batch.state == 'running' %}Очередь готова к запуску. Закрытие страницы приостанавливает отправку следующих заявок.{% elif batch.state == 'finished' %}Загрузка завершена. Ошибочные и невыбранные заявки можно проверить и выбрать снова.{% else %}Проверьте заявки, даты окончания и совпадения заказчиков.{% endif %}</p></div>
+<form method="post" id="batch-plan">{% csrf_token %}{{ plan.non_field_errors }}{{ plan.selected.errors }}
+{% if batch.state != 'running' and can_start %}<article class="section-card"><h2>Задачи для новых договоров</h2>{{ plan.templates }}{{ plan.templates.errors }}<p class="muted">Сроки можно изменить в подробностях каждой новой заявки. Пустой срок рассчитывается от даты договора / начала / окончания тура по шаблону.</p><button type="button" id="batch-select-new" class="secondary">Выбрать все новые</button></article>{% endif %}
+{% for info in infos %}<article class="section-card batch-row" id="batch-row-{{ info.row.pk }}" data-state="{{ info.row.state }}"><div class="batch-row-heading"><h2>{% if info.eligible and batch.state != 'running' %}<input type="checkbox" name="selected" value="{{ info.row.pk }}" {% if info.selected %}checked{% endif %} aria-label="Выбрать заявку {{ info.row.source_id }}">{% endif %}№ {{ info.row.source_id }}</h2><span class="badge" data-row-state>{% if info.row.state == 'queued' %}В очереди{% elif info.row.state == 'error' %}Ошибка{% else %}{{ info.status }}{% endif %}</span></div>
+{% if info.normalized %}<p><strong>{{ info.normalized.customer.name }}</strong> · {{ info.normalized.operator }} · {{ info.normalized.contract.country }}</p><p>{{ info.normalized.contract.hotel }} · {{ info.normalized.contract.start|date:'d.m.Y' }} — {{ info.normalized.contract.end|date:'d.m.Y' }} · <b>{{ info.normalized.price|money }} ₽</b></p><details><summary>Туристы и данные заявки</summary><p>Туристов: {{ info.normalized.tourists|length }} · Взрослых: {{ info.normalized.contract.adults }} · Детей: {{ info.normalized.contract.children }}</p>{% for key,t in info.normalized.tourists %}<p>{{ t.name }} · {{ t.birthday|date:'d.m.Y' }}</p>{% endfor %}<p class="muted">Проживание: {{ info.normalized.hotel|length }} · Перелёты: {{ info.normalized.transport|length }} · Услуги: {{ info.normalized.service|length }}</p></details>{% elif info.existing %}<p>{{ info.existing.customer }} · {{ info.existing.operator }}</p>{% endif %}
+<p class="{% if info.error %}batch-error{% else %}muted{% endif %}" data-row-message>{{ info.error|default:info.row.message }}</p>
+{% if info.existing %}<a href="{% url 'contract_card' info.existing.pk %}">Открыть договор</a> · <a href="{% url 'tourvisor_import' %}?order_id={{ info.row.source_id|urlencode }}">Сверить поштучно</a>{% endif %}
+{% if info.eligible and batch.state != 'running' %}<div class="field-grid"><div class="field"><label for="{{ info.end_field.id_for_label }}">Подтвердите дату окончания тура *</label>{{ info.end_field }}{{ info.end_field.errors }}</div><div class="field"><label for="{{ info.customer_field.id_for_label }}">Заказчик в CRM *</label>{{ info.customer_field }}{{ info.customer_field.errors }}</div></div><details><summary>Сроки задач этой заявки</summary><div class="field-grid">{% for task in info.task_fields %}<div class="field"><label for="{{ task.field.id_for_label }}">{{ task.name }}</label>{{ task.field }}{{ task.field.errors }}</div>{% endfor %}</div></details>{% endif %}
+</article>{% endfor %}
+{% if batch.state != 'running' and can_start %}<div class="save-bar"><button>Импортировать выбранные новые договоры</button><span class="muted">Изменения сохраняются отдельно для каждой заявки.</span></div>{% endif %}
+</form>
+{% endif %}{% endif %}
+<script src="{% static 'crm/batch.js' %}"></script>
+{% endblock %}

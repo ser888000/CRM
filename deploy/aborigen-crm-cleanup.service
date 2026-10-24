@@ -1,0 +1,16 @@
+[Unit]
+Description=Clear expired CRM import previews
+[Service]
+Type=oneshot
+User=aborigen-crm
+Group=aborigen-crm
+WorkingDirectory=/opt/aborigen-crm
+EnvironmentFile=/etc/aborigen-crm.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/aborigen-crm/.venv/bin/python manage.py purge_tourvisor_batches
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aborigen-crm
+UMask=0077
