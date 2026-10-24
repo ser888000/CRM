@@ -35,24 +35,6 @@ class DateRange(forms.Form):
     end=forms.DateField(required=False)
 
 @login_required
-@permission_required('crm.view_task',raise_exception=True)
-def tasks(request):
-    today=timezone.localdate()
-    qs=Task.objects.select_related('customer','contract__operator','operator','employee').prefetch_related('contract__bookings')
-    mode=request.GET.get('period','today')
-    if mode=='done':qs=qs.filter(done=True)
-    elif mode!='all':
-        qs=qs.filter(done=False)
-        if mode=='overdue':qs=qs.filter(due__lt=today)
-        elif mode=='future':qs=qs.filter(due__gt=today)
-        elif mode=='today':qs=qs.filter(due=today)
-    f=DateRange(request.GET)
-    if f.is_valid():
-        if f.cleaned_data['start']:qs=qs.filter(due__gte=f.cleaned_data['start'])
-        if f.cleaned_data['end']:qs=qs.filter(due__lte=f.cleaned_data['end'])
-    return render(request,'crm/tasks.html',{'rows':qs,'dateform':f,'period':mode})
-
-@login_required
 @permission_required('crm.change_task',raise_exception=True)
 @require_POST
 @transaction.atomic

@@ -125,7 +125,7 @@ def contract_card(request,pk=None):
         history=list(AuditEvent.objects.filter(query).select_related('actor')[:60]) if request.user.has_perm('crm.view_auditevent') else []
         from django.apps import apps
         from .templatetags.money import money
-        labels={'card_saved':'Договор сохранён','card_customer_saved':'Данные заказчика изменены','card_payment_saved':'Финансовая операция сохранена','card_booking_saved':'Бронь ТО сохранена','card_line_saved':'Стоимость изменена','card_task_saved':'Задача сохранена','card_tourist_saved':'Данные туриста изменены','tourvisor_created':'Договор импортирован из Турвизора','tourvisor_updated':'Данные обновлены из Турвизора','created':'Запись создана','updated':'Запись изменена','inline_saved':'Строка договора сохранена','rescheduled':'Задача перенесена','copied':'Договор скопирован'}
+        labels={'card_saved':'Договор сохранён','card_customer_saved':'Данные заказчика изменены','card_payment_saved':'Финансовая операция сохранена','card_booking_saved':'Бронь ТО сохранена','card_line_saved':'Стоимость изменена','card_task_saved':'Задача сохранена','card_tourist_saved':'Данные туриста изменены','tourvisor_created':'Договор импортирован из Турвизора','tourvisor_updated':'Данные обновлены из Турвизора','created':'Запись создана','updated':'Запись изменена','inline_saved':'Строка договора сохранена','completed':'Задача выполнена','reopened':'Задача возвращена в запланированные','rescheduled':'Задача перенесена','copied':'Договор скопирован'}
         for event in history:
             event.display_action=labels.get(event.action,'Изменение записи')
             event.details=[]
