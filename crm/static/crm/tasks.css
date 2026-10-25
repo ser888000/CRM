@@ -3,3 +3,5 @@
 .task-pagination{display:flex;gap:14px;align-items:center;justify-content:flex-end}
 
 .task-bulk button:disabled{opacity:.45;cursor:default}
+
+.tasks-table .task-description{min-width:150px;width:190px;max-width:220px}.tasks-table th{position:relative;white-space:nowrap}.tasks-table .sort-column{background:transparent;color:inherit;border:0;padding:4px;font-weight:600}.task-filters>div:nth-of-type(5){grid-column:1}.task-filters .column-options label{display:flex}.task-filters .column-options input[type=checkbox]{width:auto}

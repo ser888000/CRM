@@ -18,7 +18,7 @@ class TaskWorkspaceTests(TestCase):
         with patch('crm.task_views.timezone.localdate',return_value=self.today):
             r=self.client.get('/tasks/?period=all')
             self.assertEqual(r.context['count'],3)
-            counts={tab['key']:tab['count'] for tab in r.context['tabs']};self.assertEqual(counts['today'],1);self.assertEqual(counts['overdue'],1)
+            counts={tab['key']:tab['count'] for tab in r.context['tabs']};self.assertEqual(counts['today'],2);self.assertEqual(counts['overdue'],1)
             r=self.client.get('/tasks/',{'period':'all','q':'test123','customer':'пЕтРоВ','number':'test-1'})
             self.assertEqual([t.pk for t in r.context['rows']],[self.old.pk])
             self.client.get('/finances/')
@@ -76,3 +76,35 @@ class TaskWorkspaceTests(TestCase):
     def test_redirect_cannot_escape_task_journal(self):
         response=self.client.post('/tasks/actions/',{'action':'complete','tasks':[self.current.pk],'return_query':'next=https://example.test&foo=bar&period=all'})
         self.assertEqual(response.url,'/tasks/?period=all')
+
+    def test_dates_status_and_overdue_are_independent(self):
+        tomorrow=Task.objects.create(title='Завтра готово',due=self.today+timedelta(days=1),done=True)
+        with patch('crm.task_views.timezone.localdate',return_value=self.today):
+            response=self.client.get('/tasks/?period=today')
+            self.assertEqual({t.pk for t in response.context['rows']},{self.current.pk,self.done.pk})
+            response=self.client.get('/tasks/?period=today&status=planned')
+            self.assertEqual([t.pk for t in response.context['rows']],[self.current.pk])
+            response=self.client.get('/tasks/?period=tomorrow')
+            self.assertEqual([t.pk for t in response.context['rows']],[tomorrow.pk])
+            response=self.client.get('/tasks/?period=overdue&status=done&start=2030-01-01&end=2030-01-01')
+            self.assertEqual([t.pk for t in response.context['rows']],[self.old.pk])
+            response=self.client.get('/tasks/?period=custom&status=done&start=2026-10-24&end=2026-10-25')
+            self.assertEqual({t.pk for t in response.context['rows']},{self.done.pk,tomorrow.pk})
+    def test_column_filters_sort_and_tomorrow_action(self):
+        response=self.client.get('/tasks/',{'period':'all','sort':'-due','f_title':[self.old.title,self.current.title]})
+        self.assertEqual([t.pk for t in response.context['rows']],[self.current.pk,self.old.pk])
+        self.assertContains(response,'Фильтр: Сотрудник')
+        self.assertNotContains(response,'Найдено задач:')
+        with patch('crm.task_views.timezone.localdate',return_value=self.today):
+            self.client.post('/tasks/actions/',{'tasks':[self.old.pk,self.done.pk],'action':'tomorrow'})
+        self.old.refresh_from_db();self.done.refresh_from_db()
+        self.assertEqual(self.old.due,self.today+timedelta(days=1));self.assertEqual(self.done.due,self.today)
+    def test_task_type_name_description_and_rename(self):
+        from .models import TaskType
+        kind=TaskType.objects.create(name='Короткое имя',description='Описание типа')
+        response=self.client.post('/tasks/new/',{'task_type':kind.pk,'due':'2026-11-01'})
+        self.assertEqual(response.status_code,302)
+        task=Task.objects.get(task_type=kind);self.assertEqual(task.description,kind.description)
+        kind.name='Новое имя';kind.save()
+        response=self.client.get('/tasks/?period=all')
+        self.assertContains(response,'Новое имя')

@@ -311,3 +311,10 @@ class PaymentOperationAdmin(AuditedAdmin):
     readonly_fields=['code']
     def has_add_permission(self,request):return False
     def has_delete_permission(self,request,obj=None):return False
+
+from .models import TaskType
+@admin.register(TaskType)
+class TaskTypeAdmin(AuditedAdmin):
+    list_display=['name','description','is_default']
+    list_editable=['is_default']
+    search_fields=['name','description']

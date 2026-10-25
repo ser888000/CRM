@@ -1,4 +1,5 @@
 """Daily task journal, editor and explicit bulk actions."""
+from datetime import timedelta
 import hashlib
 import json
 from django import forms
@@ -14,13 +15,15 @@ from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
-from .models import Task,Customer,Contract,Operator,TaskTemplate,AuditEvent,normalize_location
+from .models import Task,Customer,Contract,Operator,TaskTemplate,TaskType,AuditEvent,normalize_location
 from .reference_defaults import apply_reference_defaults
 from .widgets import LocationInput
 from .services import repeat_tasks
 
-PERIODS=[('today','Сегодня'),('overdue','Просроченные'),('future','Предстоящие'),('planned','Запланированные'),('done','Выполненные'),('all','Все задачи')]
-PARAMS={'period','start','end','q','customer','number','operator','employee','page'}
+PERIODS=[('today','Сегодня'),('tomorrow','Завтра'),('overdue','Просроченные')]
+STATUSES=[('planned','Запланировано'),('done','Выполнено'),('all','Все')]
+COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
+PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
     data=QueryDict(value[:4000]).copy()
@@ -38,13 +41,13 @@ def version(task):
 class TaskFilters(forms.Form):
     q=forms.CharField(label='Задача, описание или бронь',required=False,max_length=250)
     customer=forms.CharField(label='Заказчик',required=False,max_length=250)
-    number=forms.CharField(label='Номер договора',required=False,max_length=100)
     operator=forms.CharField(label='Туроператор',required=False,max_length=200)
     employee=forms.ChoiceField(label='Сотрудник',required=False,choices=[])
     start=forms.DateField(label='Срок с',required=False,widget=forms.DateInput(attrs={'type':'date'}))
     end=forms.DateField(label='по',required=False,widget=forms.DateInput(attrs={'type':'date'}))
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.order_fields(['q','customer','employee','operator','start','end'])
         self.fields['employee'].choices=[('','Все сотрудники'),('shared','Общие задачи')]+[(str(u.pk),u.get_full_name() or u.username) for u in get_user_model().objects.filter(is_active=True)]
     def clean(self):
         data=super().clean()
@@ -58,38 +61,63 @@ def journal(request):
     if 'reset' in request.GET:
         request.session.pop('task_journal',None);return redirect('tasks')
     if not request.GET and request.session.get('task_journal'):return redirect(back_url(request.session['task_journal']))
-    filters=TaskFilters(request.GET);today=timezone.localdate();mode=request.GET.get('period','today')
-    if mode not in dict(PERIODS):mode='today'
-    tasks=list(Task.objects.select_related('customer','contract__customer','contract__operator','operator','employee').prefetch_related('contract__bookings').order_by('done','due','pk'))
+    today=timezone.localdate();mode=request.GET.get('period','today')
+    legacy_status=mode if mode in ('planned','done') else 'all'
+    if mode in ('planned','done'):mode='all'
+    if mode not in ('today','tomorrow','overdue','custom','all'):mode='today'
+    status=request.GET.get('status',legacy_status)
+    if status not in dict(STATUSES):status='all'
+    params=request.GET.copy()
+    if mode in ('today','tomorrow'):
+        day=today+timedelta(days=mode=='tomorrow');params['start']=params['end']=day.isoformat()
+    filters=TaskFilters(params)
+    tasks=list(Task.objects.select_related('task_type','customer','contract__customer','contract__operator','operator','employee').prefetch_related('contract__bookings').order_by('done','due','pk'))
     if filters.is_valid():
         data=filters.cleaned_data
         def matches(t):
             customer=t.customer or (t.contract.customer if t.contract_id else None)
-            values={'q':' '.join([t.title,t.description,t.booking_number,*[n for n,_ in t.booking_entries]]),'customer':str(customer or ''),'number':str(t.contract) if t.contract_id else '', 'operator':str(t.tour_operator or '')}
+            values={'q':' '.join([t.display_title,t.description,t.booking_number,*[n for n,_ in t.booking_entries]]),'customer':str(customer or ''),'operator':str(t.tour_operator or '')}
             if any(normalize_location(data[k]) not in normalize_location(values[k]) for k in values if data.get(k)):return False
             if data['employee']=='shared' and t.employee_id:return False
             if data['employee'] not in ('','shared') and str(t.employee_id)!=data['employee']:return False
-            return not ((data['start'] and t.due<data['start']) or (data['end'] and t.due>data['end']))
+            return True
         tasks=[t for t in tasks if matches(t)]
-        query=request.GET.copy()
-        for key in list(query):
-            if key not in PARAMS or not query.get(key):del query[key]
-        if mode!='today' or query:query['period']=mode
-        request.session['task_journal']=query.urlencode()
-    conditions={'today':lambda t:not t.done and t.due==today,'overdue':lambda t:not t.done and t.due<today,'future':lambda t:not t.done and t.due>today,'planned':lambda t:not t.done,'done':lambda t:t.done,'all':lambda t:True}
-    tabs=[]
+        request.session['task_journal']=safe_query(request.GET.urlencode())
+    else:data={}
+    def in_period(t,key):
+        if key=='overdue':return not t.done and t.due<today
+        if key=='today':return t.due==today
+        if key=='tomorrow':return t.due==today+timedelta(days=1)
+        return not ((data.get('start') and t.due<data['start']) or (data.get('end') and t.due>data['end']))
+    def in_status(t,key):return key=='all' or t.done==(key=='done')
+    for t in tasks:
+        t.display_customer=t.customer or (t.contract.customer if t.contract_id else None)
+        t.column_values={'title':t.display_title,'due':t.due.strftime('%d.%m.%Y'),'customer':str(t.display_customer or '—')+(' / '+str(t.contract) if t.contract_id else ''),'operator':' / '.join([str(t.tour_operator or '—'),*[n for n,_ in t.booking_entries]]),'employee':(t.employee.get_full_name() or t.employee.username) if t.employee else 'Общая задача','status':'Выполнено' if t.done else 'Запланировано'}
+    columns=[]
+    for key,label in COLUMNS:
+        selected=request.GET.getlist('f_'+key)
+        choices=sorted({t.column_values[key] for t in tasks}|set(selected),key=normalize_location)
+        columns.append({'key':key,'label':label,'options':[{'value':v,'selected':v in selected} for v in choices],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
+    tasks=[t for t in tasks if all(not request.GET.getlist('f_'+key) or t.column_values[key] in request.GET.getlist('f_'+key) for key,_ in COLUMNS)]
+    tabs=[];status_tabs=[]
     for key,label in PERIODS:
-        params=request.GET.copy();params.pop('reset',None);params.pop('page',None);params['period']=key
-        tabs.append({'key':key,'label':label,'count':sum(conditions[key](t) for t in tasks),'url':'?'+params.urlencode()})
-    rows=[t for t in tasks if conditions[mode](t)]
-    total=len(rows);page=Paginator(rows,100).get_page(request.GET.get('page'))
-    rows=list(page.object_list)
+        query=request.GET.copy();query.pop('page',None);query['period']=key
+        if key in ('today','tomorrow'):query['status']='all'
+        tabs.append({'key':key,'label':label,'count':sum(in_period(t,key) for t in tasks),'url':'?'+query.urlencode()})
+    period_tasks=[t for t in tasks if in_period(t,mode)]
+    for key,label in STATUSES:
+        query=request.GET.copy();query.pop('page',None);query['status']=key
+        status_tabs.append({'key':key,'label':label,'count':sum(in_status(t,key) for t in period_tasks),'url':'?'+query.urlencode()})
+    rows=[t for t in period_tasks if mode=='overdue' or in_status(t,status)]
+    sort=request.GET.get('sort','');key=sort.lstrip('-')
+    if key in dict(COLUMNS):rows.sort(key=lambda t:t.due if key=='due' else normalize_location(t.column_values[key]),reverse=sort.startswith('-'))
+    total=len(rows);page=Paginator(rows,100).get_page(request.GET.get('page'));rows=list(page.object_list)
     pagination=[]
     for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
         if number:
-            params=request.GET.copy();params['page']=number;pagination.append({'label':label,'url':'?'+params.urlencode()})
-    for t in rows:t.overdue=not t.done and t.due<today;t.display_customer=t.customer or (t.contract.customer if t.contract_id else None)
-    return render(request,'crm/tasks.html',{'rows':rows,'filters':filters,'dateform':filters,'period':mode,'tabs':tabs,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
+            query=request.GET.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
+    for t in rows:t.overdue=not t.done and t.due<today
+    return render(request,'crm/tasks.html',{'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
 
 class TaskEditorForm(forms.ModelForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)
@@ -97,10 +125,12 @@ class TaskEditorForm(forms.ModelForm):
     occurrences=forms.IntegerField(label='Всего задач, включая первую',min_value=1,max_value=366,initial=1,required=False,help_text='Все повторы создаются сразу, максимум 366.')
     class Meta:
         model=Task
-        fields=['title','description','due','customer','contract','operator','booking_number','employee','done']
-        widgets={'title':LocationInput(TaskTemplate),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':3})}
+        fields=['task_type','title','description','due','customer','contract','operator','booking_number','employee','done']
+        widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['title'].required=False
+        self.fields['title'].help_text='Можно выбрать тип задачи или ввести своё название.'
         self.fields['contract'].queryset=Contract.objects.select_related('customer').order_by('-date','-pk')
         self.fields['contract'].label_from_instance=lambda c:f'{c} · {c.customer}'
         self.fields['customer'].label='Заказчик (необязательно)'
@@ -115,11 +145,16 @@ class TaskEditorForm(forms.ModelForm):
         else:self.fields['due'].initial=timezone.localdate()
         apply_reference_defaults(self,kwargs.get('initial'))
     def clean(self):
-        data=super().clean();contract=data.get('contract');customer=data.get('customer')
+        data=super().clean()
+        if data.get('task_type'):
+            data['title']=data['task_type'].name
+            if not data.get('description'):data['description']=data['task_type'].description
+        contract=data.get('contract');customer=data.get('customer')
         if contract:
             if customer and customer.pk!=contract.customer_id:self.add_error('customer','Заказчик не соответствует выбранному договору.')
             else:data['customer']=contract.customer
             data['operator']=None
+        if not data.get('title'):self.add_error('title','Выберите тип или введите название задачи.')
         if data.get('repeat') and not data.get('occurrences'):self.add_error('occurrences','Укажите число задач.')
         if data.get('repeat') and data.get('done'):self.add_error('done','Для повторяющихся задач оставьте статус «Запланировано».')
         return data
@@ -159,13 +194,14 @@ def actions(request):
         raw=request.POST.getlist('tasks')
         if not 1<=len(raw)<=500 or any(not v.isdecimal() or len(v)>18 for v in raw):raise ValueError
         ids={int(v) for v in raw}
-        if action not in ('complete','reopen','reschedule'):raise ValueError
+        if action not in ('complete','reopen','reschedule','tomorrow'):raise ValueError
         due=forms.DateField().clean(request.POST.get('due')) if action=='reschedule' else None
     except (ValueError,forms.ValidationError):
         messages.error(request,'Выберите задачи и действие. Для переноса укажите дату.');return redirect(target)
+    if action=='tomorrow':due=timezone.localdate()+timedelta(days=1)
     count=0;skipped=0;contracts=set()
     for task in Task.objects.select_for_update().filter(pk__in=ids):
-        if action=='reschedule':
+        if action in ('reschedule','tomorrow'):
             if task.done:skipped+=1;continue
             field='due';new=due
         else:field='done';new=action=='complete'

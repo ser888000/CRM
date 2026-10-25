@@ -17,8 +17,8 @@ def create_tasks(contract,templates=None,dates=None):
         due=(dates or {}).get(template.pk) or task_due(contract,template)
         if due:
             Task.objects.get_or_create(origin_key=f'contract:{contract.pk}:template:{template.pk}',defaults={
-                'template':template,'contract':contract,'customer':contract.customer,'title':template.name,'due':due,
-                'description':flight_description(contract) if template.copy_flights else ''})
+                'task_type':template.task_type,'template':template,'contract':contract,'customer':contract.customer,'title':str(template),'due':due,
+                'description':'\n'.join(v for v in ((template.task_type.description if template.task_type_id else ''),flight_description(contract) if template.copy_flights else '') if v)})
 
 @transaction.atomic
 def copy_contract(source):
@@ -53,7 +53,7 @@ def repeat_tasks(task,period,count):
             months=task.due.year*12+task.due.month-1+i*(12 if period=='year' else 1)
             year,month=divmod(months,12);month+=1
             due=date(year,month,min(task.due.day,calendar.monthrange(year,month)[1]))
-        copies.append(Task.objects.create(title=task.title,description=task.description,due=due,employee=task.employee,customer=task.customer,contract=task.contract,operator=task.operator,booking_number=task.booking_number))
+        copies.append(Task.objects.create(task_type=task.task_type,title=task.title,description=task.description,due=due,employee=task.employee,customer=task.customer,contract=task.contract,operator=task.operator,booking_number=task.booking_number))
     return copies
 
 

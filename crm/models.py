@@ -260,7 +260,17 @@ def payment_operation_choices():
     return [(code,labels.get(code,label)) for code,label in Payment.KINDS]
 
 
+class TaskType(DefaultReference):
+    name=models.CharField('Задача',max_length=250,unique=True)
+    description=models.TextField('Описание',blank=True)
+    class Meta(DefaultReference.Meta):
+        verbose_name='Тип задачи'
+        verbose_name_plural='Типы задач'
+        ordering=['name']
+    def __str__(self):return self.name
+
 class TaskTemplate(models.Model):
+    task_type=models.ForeignKey(TaskType,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Тип задачи')
     name = models.CharField('Задача',max_length=250)
     anchor = models.CharField('От какой даты',max_length=20,choices=[('created','Создание договора'),('start','Начало тура'),('end','Окончание тура')])
     offset = models.IntegerField('Смещение в днях',default=0)
@@ -271,9 +281,10 @@ class TaskTemplate(models.Model):
         verbose_name='Шаблон задачи'
         verbose_name_plural='Шаблоны задач'
         ordering=['order','pk']
-    def __str__(self): return self.name
+    def __str__(self): return self.task_type.name if self.task_type_id else self.name
 
 class Task(models.Model):
+    task_type=models.ForeignKey(TaskType,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Тип задачи')
     title = models.CharField('Тип / название задачи',max_length=250)
     description = models.TextField('Описание',blank=True)
     due = models.DateField('Срок')
@@ -287,6 +298,13 @@ class Task(models.Model):
     origin_key = models.CharField(max_length=100,null=True,blank=True,unique=True,editable=False)
     class Meta: verbose_name='Задача'; verbose_name_plural='Задачи'; ordering=['done','due','pk']
     @property
+    def display_title(self):return self.task_type.name if self.task_type_id else self.title
+    def save(self,*args,**kwargs):
+        if not self.task_type_id and self.title:
+            self.task_type=TaskType.objects.filter(name=self.title).first()
+            if self.task_type_id and kwargs.get('update_fields') is not None:kwargs['update_fields']=set(kwargs['update_fields'])|{'task_type'}
+        super().save(*args,**kwargs)
+    @property
     def tour_operator(self):
         return self.contract.operator if self.contract_id else self.operator
     @property
@@ -296,7 +314,7 @@ class Task(models.Model):
         if self.contract_id:
             return [(b.number,b.booking_link) for b in self.contract.bookings.all()]
         return []
-    def __str__(self): return self.title
+    def __str__(self): return self.display_title
 
 class AuditEvent(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True)
