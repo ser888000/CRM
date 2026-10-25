@@ -7,5 +7,5 @@ Type=oneshot
 User=root
 WorkingDirectory=/opt/aborigen-crm
 ExecStart=/usr/bin/python3 /usr/local/libexec/aborigen-crm-update.py
-UMask=0027
+UMask=0022
 TimeoutStartSec=60min

@@ -105,8 +105,12 @@ def read_request():
 
 
 def main():
+    os.umask(0o022)
     os.environ['GIT_TERMINAL_PROMPT']='0'
     os.environ['PIP_NO_INPUT']='1'
+    os.environ['PIP_DISABLE_PIP_VERSION_CHECK']='1'
+    os.environ['PIP_DEFAULT_TIMEOUT']='20'
+    os.environ['PIP_RETRIES']='2'
     with open(LOCK,'w') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         data={'state':'running','message':'Проверяем опубликованную версию.','started':stamp()}
@@ -135,6 +139,7 @@ def main():
                     candidate=BACKUPS/('before-web-update-'+datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')+'-'+request['request_id'][:8]+'.sqlite3')
                     backup_database(candidate);backup=candidate;data['backup']=backup.name;publish(data)
                     run(['git','merge','--ff-only',target],log,60)
+                    run(['python3','/usr/local/libexec/aborigen-crm-code-permissions.py'],log,60)
                     run(['bash','deploy/install-service.sh'],log,1200)
                     healthy();data.update(state='success',message='Обновление установлено. CRM работает.')
             except Exception as exc:
@@ -145,6 +150,7 @@ def main():
                     try:
                         run(['systemctl','stop','aborigen-crm-cleanup.timer','aborigen-crm-cleanup.service','aborigen-crm'],log,90)
                         run(['git','reset','--hard',old],log,60)
+                        run(['python3','/usr/local/libexec/aborigen-crm-code-permissions.py'],log,60)
                         if backup:restore_database(backup)
                         run(['bash','deploy/install-service.sh'],log,1200)
                         healthy();data['revision']=old[:12];data['message']='Обновление не установлено. Прежняя версия и база восстановлены.'

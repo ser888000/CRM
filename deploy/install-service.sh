@@ -1,12 +1,14 @@
 #!/bin/sh
 # Run as root on the dedicated VPS after stopping runserver.
 set -eu
+umask 022
 cd /opt/aborigen-crm
 if [ "$(id -u)" != 0 ]; then echo 'Run as root'; exit 1; fi
 if ! id aborigen-crm >/dev/null 2>&1; then
     useradd --system --home-dir /var/lib/aborigen-crm --shell /usr/sbin/nologin aborigen-crm
 fi
-.venv/bin/pip install -r requirements.txt
+python3 deploy/repair-code-permissions.py
+.venv/bin/pip install --disable-pip-version-check -r requirements.txt
 if systemctl is-active --quiet aborigen-crm; then systemctl stop aborigen-crm; fi
 install -d -m 700 -o aborigen-crm -g aborigen-crm /var/lib/aborigen-crm
 python3 - <<'PY'
@@ -35,16 +37,30 @@ for args in [('migrate',),('seed_templates',),('collectstatic','--noinput'),('ch
     subprocess.run(['.venv/bin/python','manage.py',*args],env=env,check=True)
 PY
 chown -R aborigen-crm:aborigen-crm /var/lib/aborigen-crm
+# Root checks cannot detect code unreadable by the actual application account.
+python3 - <<'PY_RUNTIME'
+import os,pwd,shlex,subprocess
+from pathlib import Path
+runtime_env=os.environ.copy()
+for line in Path('/etc/aborigen-crm.env').read_text().splitlines():
+    if not line.strip() or line.lstrip().startswith('#'):continue
+    key,value=line.split('=',1);parts=shlex.split(value);runtime_env[key]=parts[0] if parts else ''
+runtime_env['PYTHONDONTWRITEBYTECODE']='1'
+account=pwd.getpwnam('aborigen-crm')
+subprocess.run(['.venv/bin/python','manage.py','check'],env=runtime_env,user=account.pw_uid,group=account.pw_gid,extra_groups=[],check=True)
+PY_RUNTIME
 install -m 644 deploy/aborigen-crm.service /etc/systemd/system/aborigen-crm.service
 install -m 644 deploy/aborigen-crm-cleanup.service /etc/systemd/system/aborigen-crm-cleanup.service
 install -m 644 deploy/aborigen-crm-cleanup.timer /etc/systemd/system/aborigen-crm-cleanup.timer
 install -d -m 750 -o root -g aborigen-crm /var/lib/aborigen-crm-updater
 install -d -m 755 -o root -g root /usr/local/libexec
 install -m 755 -o root -g root deploy/run-update.py /usr/local/libexec/aborigen-crm-update.py
+install -m 755 -o root -g root deploy/repair-code-permissions.py /usr/local/libexec/aborigen-crm-code-permissions.py
 install -m 644 deploy/aborigen-crm-update.path /etc/systemd/system/aborigen-crm-update.path
 install -m 644 deploy/aborigen-crm-update.service /etc/systemd/system/aborigen-crm-update.service
 systemctl daemon-reload
-systemctl enable --now aborigen-crm-update.path
+systemctl enable aborigen-crm-update.path
+if ! systemctl is-active --quiet aborigen-crm-update.path; then systemctl start --no-block aborigen-crm-update.path; fi
 install -m 640 -o root -g aborigen-crm /dev/null /var/lib/aborigen-crm-updater/installed
 systemctl enable --now aborigen-crm-cleanup.timer
 systemctl enable --now aborigen-crm
