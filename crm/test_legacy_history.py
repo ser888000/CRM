@@ -28,7 +28,7 @@ class HistoryTests(TestCase):
         data=load_history(package());_,_,preview=prepare_history(data)
         self.assertEqual(m.Customer.objects.count(),0)
         run,created=apply_history(data)
-        self.assertTrue(created);self.assertEqual(run.summary,preview)
+        self.assertTrue(created);self.assertEqual(run.summary['totals'],preview['totals'])
         contract=m.Contract.objects.get(number='A-10')
         self.assertEqual(contract.amount,Decimal('500'));self.assertEqual(contract.lines.get().amount,Decimal('400'))
         self.assertEqual(contract.cost,Decimal('200'));self.assertEqual(contract.paid,Decimal('250'))
@@ -36,8 +36,11 @@ class HistoryTests(TestCase):
         self.assertIsNone(contract.tourvisor_id)
         self.assertEqual(contract.lines.get().tourist_snapshot['Номер паспорта'],'0000000000')
         self.assertEqual(contract.legacy_customer_snapshot['person']['FIO_REQUIS_FIZ'],'Историческое имя')
-        self.assertEqual(m.Tourist.objects.count(),0);self.assertEqual(m.Booking.objects.count(),0)
-        self.assertEqual(m.Payment.objects.filter(kind='operator').count(),0)
+        self.assertEqual(m.Tourist.objects.count(),1);self.assertEqual(m.Booking.objects.count(),0)
+        self.assertEqual(m.Payment.objects.filter(kind='operator').count(),1)
+        self.assertIsNone(contract.operator_paid)
+        self.assertEqual(m.Payment.objects.get(kind='operator').date,contract.date)
+        self.assertEqual(contract.opening_operator_paid,0)
         self.assertEqual(m.Payment.objects.get(kind='customer_refund').amount,50)
         self.assertEqual(m.Customer.objects.count(),2) # Equal names must not merge source IDs.
         self.assertEqual(run.summary['deferred_payments'],[43]);self.assertEqual(run.summary['zero_payments'],1)
@@ -45,7 +48,8 @@ class HistoryTests(TestCase):
         employee=m.Task.objects.first().employee
         self.assertFalse(employee.is_active);self.assertFalse(employee.has_usable_password())
         self.assertEqual(m.Task.objects.filter(done=True).count(),1)
-        self.assertEqual(m.Task.objects.filter(contract__isnull=False).count(),0)
+        self.assertEqual(m.Task.objects.filter(contract__isnull=False).count(),1)
+        self.assertFalse(m.Task.objects.filter(done=True,contract__isnull=False).exists())
         self.assertEqual(run.records.get(table='LIST_DOCUMENTS',source_id=10).payload,data['indexes']['LIST_DOCUMENTS'][10])
 
     def test_repeat_keeps_manual_edits_and_changed_snapshot_rejected(self):

@@ -51,9 +51,17 @@ class BookingCardForm(forms.ModelForm):
         fields=['number']
 
 class LineCardForm(forms.ModelForm):
+    class Media:
+        js=['crm/remote_choices.js']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         apply_reference_defaults(self,kwargs.get('initial'))
+        field=self.fields['tourist']
+        if not field.widget.__class__.__module__.startswith('django.contrib.admin'):
+            selected=self.data.get(self.add_prefix('tourist')) if self.is_bound else self.instance.tourist_id or self.initial.get('tourist') or field.initial
+            choices=Tourist.objects.filter(pk=selected).only('pk','name') if selected and str(selected).isdigit() else Tourist.objects.none()
+            field.widget.choices=[('','---------')]+[(t.pk,t.name) for t in choices]
+            field.widget.attrs['data-remote-choices']='/tourists/search/'
     class Meta:
         model=ContractLine
         fields=['tourist','description','amount']

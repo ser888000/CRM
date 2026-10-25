@@ -13,7 +13,8 @@ from .models import LegacyImportRun,LegacyRecord
 
 class HistoryPackageForm(forms.Form):
     package=forms.FileField(label='Подготовленный ZIP истории',widget=forms.FileInput(attrs={'accept':'.zip'}))
-    confirmed=forms.BooleanField(label='Это тренировочная загрузка: суммы в рублях, итог из шапки; неразнесённые платежи остаются в отчёте. Существующие данные не удаляются.')
+    replace=forms.BooleanField(required=False,label='Очистить тренировочные данные перед загрузкой: Договоры, Задачи, Финансы, Заказчики, Туристы и остальные справочники. Сохранить Библиотеку, Шаблоны задач, Операции, Валюты, Города вылета и Страны.')
+    confirmed=forms.BooleanField(label='Подтверждаю выбранный режим тренировочной загрузки. Перед изменениями будет сохранена резервная копия.')
     def clean_package(self):
         value=self.cleaned_data['package']
         if value.size>MAX_PACKAGE:raise forms.ValidationError('Пакет должен быть не больше 8 МБ.')
@@ -25,9 +26,9 @@ class HistoryPackageForm(forms.Form):
 @sensitive_variables()
 def page(request):
     require_admin(request.user)
-    form=HistoryPackageForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None)
+    form=HistoryPackageForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,initial={'replace':LegacyImportRun.objects.filter(section='history').exists()})
     if request.method=='POST' and form.is_valid():
-        try:start_job(form.cleaned_data['package'],request.user)
+        try:start_job(form.cleaned_data['package'],request.user,replace=form.cleaned_data['replace'])
         except (ValueError,OSError):form.add_error(None,'Не удалось запустить загрузку. Проверьте её состояние и свободное место на сервере.')
         else:return redirect('legacy_history')
     return render(request,'crm/legacy_history.html',{'form':form,'job':state(),'runs':LegacyImportRun.objects.filter(section='history')[:10]})

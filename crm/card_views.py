@@ -73,13 +73,15 @@ def contract_card(request,pk=None):
             model,formclass=specs[action]
             entry_id=request.POST.get('entry_id')
             if entry_id and (not entry_id.isdecimal() or len(entry_id)>18):raise Http404
-            entry=get_object_or_404(model,pk=entry_id,contract=contract) if entry_id else model(contract=contract)
+            if entry_id and action=='task':entry=get_object_or_404(Task.objects.filter(Q(contract=contract)|Q(contract__isnull=True,customer=contract.customer)),pk=entry_id)
+            else:entry=get_object_or_404(model,pk=entry_id,contract=contract) if entry_id else model(contract=contract)
             require(request.user,f'crm.{"change" if entry_id else "add"}_{model._meta.model_name}')
             before=model_to_dict(entry) if entry_id else {}
             subform=formclass(request.POST,instance=entry,prefix=action+'-'+(entry_id or 'new'))
             active={'payment':'finance','booking':'bookings','line':'tourists','task':'tasks'}[action]
             if subform.is_valid():
-                saved=subform.save(commit=False);saved.contract=contract
+                saved=subform.save(commit=False)
+                if action!='task' or not entry_id:saved.contract=contract
                 if action=='task':saved.customer=contract.customer
                 saved.save();audit(request.user,saved,before,'card_'+action+'_saved')
                 contract.save(update_fields=['updated_at'])
@@ -111,7 +113,9 @@ def contract_card(request,pk=None):
     if pk:
         payments=list(contract.payments.select_related('method','legacy_payer').order_by('-date','-pk')) if request.user.has_perm('crm.view_payment') else []
         for p in payments:p.edit_form=invalid_form if invalid_action=='payment' and invalid_id==str(p.pk) else CardPaymentForm(instance=p,prefix=f'payment-{p.pk}')
-        tasks=list(Task.objects.filter(contract=contract).select_related('employee')) if request.user.has_perm('crm.view_task') else []
+        task_query=Task.objects.filter(Q(contract=contract)|Q(contract__isnull=True,customer=contract.customer)).select_related('employee','task_type').order_by('done','-due','pk')
+        task_count=task_query.count() if request.user.has_perm('crm.view_task') else 0
+        tasks=list(task_query[:100]) if request.user.has_perm('crm.view_task') else []
         for t in tasks:t.edit_form=invalid_form if invalid_action=='task' and invalid_id==str(t.pk) else TaskCardForm(instance=t,prefix=f'task-{t.pk}')
         lines=list(contract.lines.select_related('tourist'))
         for line in lines:
@@ -139,13 +143,13 @@ def contract_card(request,pk=None):
                     if field in ('amount','rate'):old,new=money(old),money(new)
                     event.details.append((label,old,new))
 
-    else:payments=[];tasks=[];lines=[];bookings=[];history=[]
-    legacy_record=LegacyRecord.objects.filter(target_model='crm.Contract',target_id=pk).only('pk','source_id').first() if pk else None
+    else:payments=[];tasks=[];lines=[];bookings=[];history=[];task_count=0
+    legacy_record=LegacyRecord.objects.filter(target_model='crm.Contract',target_id=pk).only('pk','source_id','payload').first() if pk else None
     snapshot_fields=[]
     if pk and request.user.has_perm('crm.view_customer'):
         labels={'FIO_REQUIS_FIZ':'ФИО','FULL_NAME':'Организация','PASPORT_NUMBER':'Паспорт','PASPORT_VIDAN_DATA':'Дата выдачи','PASPORT_VIDAN_KEM':'Кем выдан','KOD_PODRAZDELEN_FIZ':'Код подразделения','ADDRES_PROPIS':'Адрес регистрации','ADRES_YUR':'Юридический адрес','INN':'ИНН','KPP':'КПП','RS':'Расчётный счёт','BANK_NAME':'Банк','KONT_TEL':'Телефон','EMAIL_FIZ':'Email'}
         for values in contract.legacy_customer_snapshot.values():
             snapshot_fields.extend((label,str(values[key])) for key,label in labels.items() if values.get(key))
-    return render(request,'crm/contract_card.html',{'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
+    return render(request,'crm/contract_card.html',{'legacy_operator_original':legacy_record.payload.get('ADD_SUM_OPLATY_TO',0) if legacy_record else 0,'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
         'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'contract_task_rows':[{'kind':kind,'selected':str(kind.pk) in {str(v) for v in (form['task_templates'].value() or [])},'date':form[f'task_due_{kind.pk}']} for kind in form.fields['task_templates'].queryset], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
-        'payments':payments,'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})
+        'payments':payments,'task_count':task_count,'has_more_tasks':task_count>len(tasks),'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})

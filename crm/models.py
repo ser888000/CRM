@@ -199,15 +199,17 @@ class Contract(models.Model):
     def clean(self):
         if self.start and self.end and self.end < self.start: raise ValidationError('Окончание тура раньше начала')
     @property
-    def amount(self): return ((self.lines.aggregate(s=Sum('amount'))['s'] or Decimal('0'))+self.legacy_amount_adjustment).quantize(Decimal('0.01'))
+    def amount(self):
+        if hasattr(self,'_financial_amount'):return self._financial_amount.quantize(Decimal('0.01'))
+        return ((self.lines.aggregate(s=Sum('amount'))['s'] or Decimal('0'))+self.legacy_amount_adjustment).quantize(Decimal('0.01'))
     def balance(self,kind):
         p=self.payments.filter(kind=kind).aggregate(s=Sum('amount'))['s'] or Decimal('0')
         r=self.payments.filter(kind=kind+'_refund').aggregate(s=Sum('amount'))['s'] or Decimal('0')
         return (p-r).quantize(Decimal('0.01'))
     @property
-    def paid(self): return self.balance('customer')
+    def paid(self): return self._customer_net.quantize(Decimal('0.01')) if hasattr(self,'_customer_net') else self.balance('customer')
     @property
-    def cost(self): return self.opening_operator_paid+self.balance('operator')
+    def cost(self): return self._financial_cost.quantize(Decimal('0.01')) if hasattr(self,'_financial_cost') else self.opening_operator_paid+self.balance('operator')
     @property
     def profit(self): return self.amount-self.cost
     @property

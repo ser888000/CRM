@@ -16,6 +16,9 @@ from django.db.models import Sum,Q
 from django.utils.html import format_html_join
 
 class AuditedAdmin(admin.ModelAdmin):
+    class Media:
+        css={'all':['crm/numeric_tables.css']}
+        js=['crm/numeric_tables.js']
     formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     def get_list_display(self,request):
         fields=list(super().get_list_display(request))
@@ -89,6 +92,12 @@ class PaymentInline(admin.TabularInline):
 
 @admin.register(Contract)
 class ContractAdmin(AuditedAdmin):
+    list_per_page=50
+    show_full_result_count=False
+    list_select_related=['customer','operator']
+    def get_queryset(self,request):
+        from .financial_queries import with_financials
+        return with_financials(super().get_queryset(request)).select_related('customer','operator').defer('source_data','legacy_customer_snapshot')
     change_list_template='admin/crm/contract/change_list.html'
     form=ContractForm
     def get_form(self,request,obj=None,**kwargs):
@@ -127,8 +136,9 @@ class ContractAdmin(AuditedAdmin):
         response=super().changelist_view(request,extra_context)
         if hasattr(response,'context_data') and response.context_data and response.context_data.get('cl'):
             qs=response.context_data['cl'].queryset
-            values=list(qs)
-            response.context_data['contract_totals']={'count':len(values),**{key:money(sum((getattr(c,key) for c in values),0)) for key in ('amount','paid','debt','cost','profit')}}
+            totals=qs.aggregate(amount=Sum('_financial_amount'),paid=Sum('_customer_net'),cost=Sum('_financial_cost'))
+            amount=totals['amount'] or 0;paid=totals['paid'] or 0;cost=totals['cost'] or 0
+            response.context_data['contract_totals']={'count':qs.count(),**{key:money(value) for key,value in {'amount':amount,'paid':paid,'debt':amount-paid,'cost':cost,'profit':amount-cost}.items()}}
         return response
     @admin.display(description='Сумма, ₽')
     def display_amount(self,obj):return money(obj.amount)

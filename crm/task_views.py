@@ -59,8 +59,15 @@ class TaskFilters(forms.Form):
 @permission_required('crm.view_task',raise_exception=True)
 @never_cache
 def journal(request):
+    from .journal_period import has_value_filters,reset_link
     if 'reset' in request.GET:
-        request.session.pop('task_journal',None);return redirect('tasks')
+        previous=QueryDict(request.session.get('task_journal',''))
+        source=request.GET if any(k in request.GET for k in ('period','start','end')) else previous
+        query=QueryDict('',mutable=True)
+        for key in ('period','start','end','status','sort'):
+            if source.get(key):query[key]=source[key]
+        request.session.pop('task_journal',None)
+        return redirect(back_url(query.urlencode()))
     if not request.GET and request.session.get('task_journal'):return redirect(back_url(request.session['task_journal']))
     today=timezone.localdate();mode=request.GET.get('period','today')
     legacy_status=mode if mode in ('planned','done') else 'all'
@@ -71,6 +78,7 @@ def journal(request):
     params=request.GET.copy()
     if mode in ('today','tomorrow'):
         day=today+timedelta(days=mode=='tomorrow');params['start']=params['end']=day.isoformat()
+    search_all_dates=has_value_filters(params,('q','customer','operator','employee'))
     filters=TaskFilters(params)
     fields=['id','title','due','done','booking_number','task_type__name','customer__name','contract__number','contract__customer__name','contract__operator__name','contract__operator__booking_url_template','operator__name','operator__booking_url_template','employee__first_name','employee__last_name','employee__username']
     if params.get('q'):fields.append('description')
@@ -108,7 +116,7 @@ def journal(request):
         query=request.GET.copy();query.pop('page',None);query['period']=key
         if key in ('today','tomorrow'):query['status']='all'
         tabs.append({'key':key,'label':label,'count':sum(in_period(t,key) for t in tasks),'url':'?'+query.urlencode()})
-    period_tasks=[t for t in tasks if in_period(t,mode)]
+    period_tasks=tasks if search_all_dates else [t for t in tasks if in_period(t,mode)]
     for key,label in STATUSES:
         query=request.GET.copy();query.pop('page',None);query['status']=key
         if mode=='overdue':query['period']='custom'
@@ -124,7 +132,7 @@ def journal(request):
     descriptions=dict(Task.objects.filter(pk__in=[t.pk for t in rows]).values_list('pk','description'))
     for t in rows:
         t.description=descriptions[t.pk];t.overdue=not t.done and t.due<today
-    return render(request,'crm/tasks.html',{'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
+    return render(request,'crm/tasks.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/tasks/',params),'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
 
 class TaskEditorForm(forms.ModelForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)

@@ -23,7 +23,7 @@ class TaskWorkspaceTests(TestCase):
             self.assertEqual([t.pk for t in r.context['rows']],[self.old.pk])
             self.client.get('/finances/')
             self.assertEqual(self.client.get('/tasks/',follow=True).context['count'],1)
-            self.assertEqual(self.client.get('/tasks/?reset=1',follow=True).context['period'],'today')
+            self.assertEqual(self.client.get('/tasks/?reset=1',follow=True).context['period'],'all')
     def test_complete_reopen_and_reschedule_preserve_context_and_audit(self):
         target='/tasks/actions/'
         r=self.client.post(target,{'tasks':[self.old.pk,self.current.pk],'action':'complete','return_query':'period=all&q=TEST'})

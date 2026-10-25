@@ -14,7 +14,7 @@ from .legacy_library import LibraryImportError
 
 class HistoryImportError(ValueError):pass
 
-KEYS={'COMPANY':'ID_COMPANY','LIST_DOCUMENTS':'ID_DOC','LIST_MANYS':'ID_MANY','LIST_CONTACT_COMPANY':'ID_CONTACT','LIST_TOVAR_DOC':'ID_TOVAR_DOC','LIST_TELEPHONES':'ID_TELPHONE','LIST_EMAIL_CLIENT':'id_email','LIST_REQUIS_FIZ':'ID_LIST_REQUIS_FIZ','LIST_REQUIS_COMPANY':'ID_REQUIS','TIP_DOCUMENTS':'ID_TIP_DOCUMENT','VID_CONTACT':'ID_VID_CONTACT','VID_COMPANY':'ID_VID_COMPANY','LIST_VALUTA':'id_valuta','LIST_SPR_SCHETS_MONY':'ID_LIST_SPR_LIST_SCHETS_MONY','MANAGERS':'ID_MANAGER',**{t:'id' for t in ['ADD_SPR_OPEROTOR','ADD_SPR_PITANIE','ADD_SPR_TRANSFER','ADD_SPR_STRAHOVKA','ADD_SPR_country','ADD_SPR_city_fly']}}
+KEYS={'PRIZNAK_DOCUMENTS':'ID_PRIZNAK_DOCUMENT','COMPANY':'ID_COMPANY','LIST_DOCUMENTS':'ID_DOC','LIST_MANYS':'ID_MANY','LIST_CONTACT_COMPANY':'ID_CONTACT','LIST_TOVAR_DOC':'ID_TOVAR_DOC','LIST_TELEPHONES':'ID_TELPHONE','LIST_EMAIL_CLIENT':'id_email','LIST_REQUIS_FIZ':'ID_LIST_REQUIS_FIZ','LIST_REQUIS_COMPANY':'ID_REQUIS','TIP_DOCUMENTS':'ID_TIP_DOCUMENT','VID_CONTACT':'ID_VID_CONTACT','VID_COMPANY':'ID_VID_COMPANY','LIST_VALUTA':'id_valuta','LIST_SPR_SCHETS_MONY':'ID_LIST_SPR_LIST_SCHETS_MONY','MANAGERS':'ID_MANAGER',**{t:'id' for t in ['ADD_SPR_OPEROTOR','ADD_SPR_PITANIE','ADD_SPR_TRANSFER','ADD_SPR_STRAHOVKA','ADD_SPR_country','ADD_SPR_city_fly']}}
 MAX_PACKAGE=8*1024*1024
 MAX_EXPANDED=100*1024*1024
 
@@ -27,11 +27,12 @@ def load_history(stream):
             if len(archive.infolist())!=1 or archive.namelist()!=['history.json'] or archive.getinfo('history.json').file_size>MAX_EXPANDED:raise HistoryImportError('Некорректный архив истории.')
             raw=archive.read('history.json')
         data=json.loads(raw.decode('utf-8'))
-        if not isinstance(data,dict) or data.get('format')!='aborigen-legacy-history-v1':raise HistoryImportError('Неизвестный формат истории.')
+        if not isinstance(data,dict) or data.get('format') not in ('aborigen-legacy-history-v1','aborigen-legacy-history-v2'):raise HistoryImportError('Неизвестный формат истории.')
         source=data.get('source_key');tables=data.get('tables')
         import re
         if not isinstance(source,str) or not re.fullmatch('[a-zA-Z0-9:_-]{1,100}',source):raise HistoryImportError('Некорректный источник.')
         if not isinstance(data.get('snapshot'),str) or len(data['snapshot'])>64:raise HistoryImportError('Некорректная дата снимка.')
+        if isinstance(tables,dict) and data['format']=='aborigen-legacy-history-v1':tables.setdefault('PRIZNAK_DOCUMENTS',[])
         if not isinstance(tables,dict) or set(tables)!=set(KEYS):raise HistoryImportError('Неверный набор таблиц.')
         if sum(len(rows) if isinstance(rows,list) else 200001 for rows in tables.values())>150000:raise HistoryImportError('Слишком много записей.')
         indexes={}
@@ -99,6 +100,7 @@ def plain(value):
 
 def prepare_history(data):
     """Validate/prepare all target field values without database writes."""
+    from .legacy_rules import country,departure,nights
     i=data['indexes'];issues=[];targets={k:[] for k in ('customers','contracts','lines','payments','tasks')}
     def issue(kind,table,key,**details):issues.append({'kind':kind,'table':table,'source_id':key,**details})
     def build(model,values,table,key):
@@ -156,8 +158,8 @@ def prepare_history(data):
         if req and req['ID_COMPANY']!=row['ID_COMPANY']:issue('snapshot_customer_differs','LIST_DOCUMENTS',key)
         summary=money(row.get('SUMMA'));adjustment=money(summary-line_totals[key])
         if adjustment:issue('header_lines_difference','LIST_DOCUMENTS',key,header=str(summary),lines=str(line_totals[key]),difference=str(adjustment))
-        services='\n'.join(label+': '+string(row[field]) for field,label in [('ADD_PROEZD','Проезд'),('ADD_VIZA','Виза'),('ADD_STRAHOVKA_NEVYEZD','Страховка от невыезда'),('ADD_EXURSII','Экскурсии'),('ADD_DOP_USLUGI','Дополнительные услуги'),('ADD_BIG_PUTESHESTVIYA','Начало путешествия'),('ADD_MESTO_PUTESHESTVIYA','Пункты пребывания'),('ADD_END_PUTESHESTVIYA','Конец путешествия'),('ADD_MARSHRUT','Маршрут')] if row.get(field))
-        values={'number':string(row.get('NUMBER_DOC')),'date':day,'country':string(row.get('ADD_DOC_COUNTRY')),'start':date(row.get('ADD_DATE_BIG')),'end':date(row.get('ADD_DATE_END')),'hotel':string(row.get('ADD_HOTEL')),'room':string(row.get('ADD_NOMER')),'meal':string(row.get('ADD_PITANIE')),'transfer':string(row.get('ADD_TRANSFER')),'insurance':string(row.get('ADD_STRAHOVKA')),'services':services,'notes':plain(row.get('PRIM_DOC')),'operator_paid':date(row.get('ADD_DATE_OPLATY_TO')),'opening_operator_paid':money(row.get('ADD_SUM_OPLATY_TO')),'legacy_amount_adjustment':adjustment,'legacy_customer_snapshot':{'person':req or {},'company':corp or {}},'adults':counts[key][0],'children':counts[key][1]}
+        services='\n'.join(label+': '+string(row[field]) for field,label in [('ADD_PROEZD','Проезд'),('ADD_VIZA','Виза'),('ADD_STRAHOVKA_NEVYEZD','Страховка от невыезда'),('ADD_EXURSII','Экскурсии'),('ADD_DOP_USLUGI','Дополнительные услуги'),('ADD_END_PUTESHESTVIYA','Конец путешествия'),('ADD_MARSHRUT','Маршрут')] if row.get(field))
+        values={'number':string(row.get('NUMBER_DOC')),'date':day,'country':country(string(row.get('ADD_DOC_COUNTRY'))),'departure':departure(string(row.get('ADD_BIG_PUTESHESTVIYA'))),'region':string(row.get('ADD_MESTO_PUTESHESTVIYA')),'nights':nights(string(row.get('ADD_PRODOLZHITELNOCT'))),'start':date(row.get('ADD_DATE_BIG')),'end':date(row.get('ADD_DATE_END')),'hotel':string(row.get('ADD_HOTEL')),'room':string(row.get('ADD_NOMER')),'meal':string(row.get('ADD_PITANIE')),'transfer':string(row.get('ADD_TRANSFER')),'insurance':string(row.get('ADD_STRAHOVKA')),'services':services,'notes':plain(row.get('PRIM_DOC')),'operator_paid':date(row.get('ADD_DATE_OPLATY_TO')),'opening_operator_paid':money(row.get('ADD_SUM_OPLATY_TO')),'legacy_amount_adjustment':adjustment,'legacy_customer_snapshot':{'person':req or {},'company':corp or {}},'adults':counts[key][0],'children':counts[key][1]}
         if values['start'] and values['end'] and values['end']<values['start']:issue('source_dates_reversed','LIST_DOCUMENTS',key)
         targets['contracts'].append((key,build(m.Contract,values,'LIST_DOCUMENTS',key)))
     for key,row in i['LIST_MANYS'].items():
@@ -184,6 +186,7 @@ def prepare_history(data):
 
 @transaction.atomic
 def apply_history(data,actor=None,progress=lambda message:None):
+    from .legacy_rules import PAYMENT_NAMES,DOCUMENT_METHODS,country,departure
     source=data['source_key']
     previous=m.LegacyImportRun.objects.filter(source_key=source,section='history').first()
     if previous:
@@ -209,11 +212,14 @@ def apply_history(data,actor=None,progress=lambda message:None):
         field={'TIP_DOCUMENTS':'TIP_DOCUMENT','VID_CONTACT':'DISCRIPTION_VID_CONTCT','LIST_SPR_SCHETS_MONY':'NAME_SCHET'}.get(table,'name')
         for key,row in i[table].items():
             if table=='TIP_DOCUMENTS' and key in (19,24):continue
-            if string(row.get(field)):bind(table,key,reference(model,row[field]))
+            if string(row.get(field)):
+                name=PAYMENT_NAMES.get(key,'Другое') if table=='LIST_SPR_SCHETS_MONY' else row[field]
+                bind(table,key,reference(model,name))
     for table,model in [('ADD_SPR_country',m.Country),('ADD_SPR_city_fly',m.DepartureCity)]:
         cache={m.normalize_location(o.name):o for o in model.objects.all()}
         for key,row in i[table].items():
             name=string(row.get('name'))
+            name=country(name) if table=='ADD_SPR_country' else departure(name)
             if not name:continue
             normalized=m.normalize_location(name)
             if normalized not in cache:
@@ -221,6 +227,7 @@ def apply_history(data,actor=None,progress=lambda message:None):
                 code='legacy-'+hashlib.sha256(source.encode()).hexdigest()[:8]+'-'+str(key)
                 cache[normalized]=model.objects.create(code=code,name=name,details={'legacy_source':source,'legacy_id':key})
             bind(table,key,cache[normalized])
+    for name in {*PAYMENT_NAMES.values(),*DOCUMENT_METHODS.values(),'Другое'}:reference(m.PaymentMethod,name)
     progress('Заказчики и реквизиты')
     m.Customer.objects.bulk_create([o for _,o in targets['customers']],batch_size=100)
     customers=dict(targets['customers'])
@@ -229,29 +236,53 @@ def apply_history(data,actor=None,progress=lambda message:None):
     for key,obj in targets['contracts']:
         raw=i['LIST_DOCUMENTS'][key];obj.customer=customers[raw['ID_COMPANY']];obj.operator=reference(m.Operator,raw.get('ADD_OPERATOR'))
         obj.contract_type=reference(m.ContractType,i['TIP_DOCUMENTS'].get(raw.get('ID_TIP_DOC'),{}).get('TIP_DOCUMENT'))
+        status_name=i['PRIZNAK_DOCUMENTS'].get(raw.get('ID_PRIZNZK_DOC'),{}).get('PRIZNAK_DOCUMENT','')
+        method_name=DOCUMENT_METHODS.get(m.normalize_location(status_name))
+        if method_name:obj.payment_method=reference(m.PaymentMethod,method_name)
     m.Contract.objects.bulk_create(list(contracts.values()),batch_size=100)
     for key,obj in targets['contracts']:bind('LIST_DOCUMENTS',key,obj)
     progress('Строки туристов и стоимость')
+    from .legacy_tourists import attach_tourists
+    attach_tourists(targets['lines'],i['LIST_TOVAR_DOC'],report)
     for key,obj in targets['lines']:obj.contract=contracts[i['LIST_TOVAR_DOC'][key]['ID_DOC']]
     m.ContractLine.objects.bulk_create([o for _,o in targets['lines']],batch_size=100)
     for key,obj in targets['lines']:bind('LIST_TOVAR_DOC',key,obj)
     progress('Клиентские платежи')
     for key,obj in targets['payments']:
         raw=i['LIST_MANYS'][key];obj.contract=contracts[raw['ID_DOC']];obj.legacy_payer=customers[raw['ID_COMPANY']]
-        account=raw.get('ID_LIST_SPR_LIST_SCHETS_MONY');method_name=i['LIST_SPR_SCHETS_MONY'].get(account,{}).get('NAME_SCHET')
-        if not method_name:
-            method_name=f'Старый способ оплаты №{account}' if account is not None else 'Способ оплаты не указан'
-        obj.method=reference(m.PaymentMethod,method_name)
+        obj.method=reference(m.PaymentMethod,PAYMENT_NAMES.get(raw.get('ID_LIST_SPR_LIST_SCHETS_MONY'),'Другое'))
     m.Payment.objects.bulk_create([o for _,o in targets['payments']],batch_size=100)
     for key,obj in targets['payments']:bind('LIST_MANYS',key,obj)
+    progress('Перенесённая оплата ТО')
+    opening=[]
+    for key,obj in targets['contracts']:
+        amount=obj.opening_operator_paid
+        if amount:
+            payment=m.Payment(contract=obj,kind='operator' if amount>0 else 'operator_refund',amount=abs(amount),date=obj.operator_paid or obj.date,method=reference(m.PaymentMethod,'Тинькофф р/с'),currency='RUB',notes='Перенесённая суммарная оплата ТО из старой CRM; отдельная история платежей в источнике отсутствует.')
+            opening.append((key,payment));obj.opening_operator_paid=Decimal('0')
+    m.Payment.objects.bulk_create([o for _,o in opening],batch_size=100)
+    m.Contract.objects.bulk_update([o for _,o in targets['contracts']],['opening_operator_paid'],batch_size=100)
+    report['counts']['operator_payments']=len(opening)
+    for key,obj in opening:bind('@operator_opening',key,obj)
     progress('Задачи')
     employees={};User=get_user_model();prefix='legacy_'+hashlib.sha256(source.encode()).hexdigest()[:10]+'_'
     for key,row in i['MANAGERS'].items():
         username=prefix+str(key)
-        if User.objects.filter(username=username).exists():raise HistoryImportError('Имя исторического сотрудника уже занято.')
-        user=User(username=username,first_name=string(row.get('MANAGER_NAME'))[:150],is_active=False,is_staff=False,is_superuser=False);user.set_unusable_password();user.save();employees[key]=user;bind('MANAGERS',key,user)
+        user=User.objects.filter(username=username).first()
+        if user and (user.is_active or user.is_staff or user.is_superuser or user.has_usable_password()):raise HistoryImportError('Имя исторического сотрудника уже занято действующей учётной записью.')
+        if user is None:user=User(username=username,is_active=False,is_staff=False,is_superuser=False)
+        user.first_name=string(row.get('MANAGER_NAME'))[:150];user.set_unusable_password();user.save();employees[key]=user;bind('MANAGERS',key,user)
+    latest={}
+    for key,obj in targets['contracts']:
+        raw=i['LIST_DOCUMENTS'][key];customer_id=raw['ID_COMPANY'];order=(string(raw.get('DATA_DOC')),key)
+        if customer_id not in latest or order>latest[customer_id][0]:latest[customer_id]=(order,obj)
+    linked_tasks=0
     for key,obj in targets['tasks']:
         raw=i['LIST_CONTACT_COMPANY'][key];obj.customer=customers[raw['ID_COMPANY']];obj.task_type=reference(m.TaskType,obj.title);obj.employee=employees.get(raw.get('ID_MANAGER_EXE')) or employees.get(raw.get('ID_MANAGER'))
+        if not obj.done and raw['ID_COMPANY'] in latest:
+            obj.contract=latest[raw['ID_COMPANY']][1];linked_tasks+=1
+    report['counts']['tasks_linked_to_latest_contract']=linked_tasks
+    report['counts']['unfinished_tasks_without_contract']=sum(not t.done and not t.contract_id for _,t in targets['tasks'])
     m.Task.objects.bulk_create([o for _,o in targets['tasks']],batch_size=100)
     for key,obj in targets['tasks']:bind('LIST_CONTACT_COMPANY',key,obj)
     progress('Исходные записи и сверка')
@@ -261,6 +292,7 @@ def apply_history(data,actor=None,progress=lambda message:None):
             label,pk=bindings.get((table,key),('',None))
             status='deferred' if table=='LIST_MANYS' and not label else 'imported' if label else 'retained'
             records.append(m.LegacyRecord(source_key=source,table=table,source_id=key,import_run=run,payload=raw,target_model=label,target_id=pk,status=status))
+    records.extend(m.LegacyRecord(source_key=source,table='@operator_opening',source_id=key,import_run=run,payload={'source_document_id':key,'basis':'aggregate_operator_payment'},target_model=obj._meta.label,target_id=obj.pk) for key,obj in opening)
     m.LegacyRecord.objects.bulk_create(records,batch_size=100)
     # Query actual persisted amounts, not only prepared values, before committing.
     def total(model,table,field):
@@ -268,7 +300,8 @@ def apply_history(data,actor=None,progress=lambda message:None):
         return (model.objects.filter(pk__in=ids).aggregate(s=m.Sum(field))['s'] or Decimal('0')).quantize(Decimal('.01'))
     if total(m.ContractLine,'LIST_TOVAR_DOC','amount')!=Decimal(report['totals']['lines']):raise HistoryImportError('Не сошлись суммы строк после записи.')
     if total(m.Contract,'LIST_DOCUMENTS','legacy_amount_adjustment')+total(m.ContractLine,'LIST_TOVAR_DOC','amount')!=Decimal(report['totals']['contracts']):raise HistoryImportError('Не сошлись итоги договоров.')
-    if total(m.Contract,'LIST_DOCUMENTS','opening_operator_paid')!=Decimal(report['totals']['operator_paid']):raise HistoryImportError('Не сошлись суммы оплаты ТО.')
+    actual_operator=sum((p.amount*(-1 if p.kind=='operator_refund' else 1) for p in m.Payment.objects.filter(pk__in=[o.pk for _,o in opening])),Decimal('0'))
+    if total(m.Contract,'LIST_DOCUMENTS','opening_operator_paid')+actual_operator!=Decimal(report['totals']['operator_paid']):raise HistoryImportError('Не сошлись суммы оплаты ТО.')
     net=sum((o.amount*(-1 if o.kind=='customer_refund' else 1) for o in m.Payment.objects.filter(pk__in=[o.pk for _,o in targets['payments']])),Decimal('0'))
     if net!=Decimal(report['totals']['customer_net']):raise HistoryImportError('Не сошлись суммы клиентских платежей.')
     run.summary=report;run.issues=issues;run.save(update_fields=['summary','issues'])

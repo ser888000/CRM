@@ -11,15 +11,33 @@ MONEY={'amount','paid','debt','cost','profit'}
 DATES={'date','start','end','operator_due','operator_paid'}
 
 def journal_context(params,dateform):
-    from .journal_period import prepare
+    from .journal_period import prepare,has_value_filters,reset_link
     params=prepare(params)
     start=params['start'];end=params['end']
     dateform=dateform(params)
+    search_all_dates=has_value_filters(params,('customer','email','phone','number','operator','country'))
     qs=Contract.objects.select_related('customer','operator','payment_method').prefetch_related('lines','payments').order_by('-date','-pk')
-    if dateform.is_valid():
+    if dateform.is_valid() and not search_all_dates:
         if dateform.cleaned_data['start']:qs=qs.filter(date__gte=dateform.cleaned_data['start'])
         if dateform.cleaned_data['end']:qs=qs.filter(date__lte=dateform.cleaned_data['end'])
-    else:qs=qs.none()
+    elif not dateform.is_valid():qs=qs.none()
+    if search_all_dates:
+        # Match light scalar values first; do not load every historical line/payment
+        # just to locate a single customer outside the currently selected dates.
+        from .models import Customer
+        if any(params.get(k) for k in ('customer','email','phone')):
+            ids=[]
+            for c in Customer.objects.values('pk','name','main_phone','phones','main_email','emails'):
+                if params.get('customer') and normalize_location(params['customer']) not in normalize_location(c['name']):continue
+                if params.get('email') and normalize_location(params['email']) not in normalize_location(' '.join([c['main_email'],c['emails']])):continue
+                if params.get('phone') and not any(phone_key(params['phone']) in phone_key(v) for v in [c['main_phone'],*c['phones'].splitlines()]):continue
+                ids.append(c['pk'])
+            qs=qs.filter(customer_id__in=ids)
+        for field,lookup in [('number','number'),('country','country'),('operator','operator__name')]:
+            if params.get(field):
+                target=normalize_location(params[field])
+                ids=[pk for pk,value in qs.values_list('pk',lookup) if target in normalize_location(value or '')]
+                qs=qs.filter(pk__in=ids)
     rows=[]
     for contract in qs:
         customer=contract.customer
@@ -49,4 +67,4 @@ def journal_context(params,dateform):
     totals={key:sum((r['values'][key] for r in rows),Decimal('0')) for key in MONEY}
     totals.update({key:sum(r['values'][key] or 0 for r in rows) for key in ('adults','children')})
     footer=[{'key':key,'text':money(totals[key]) if key in MONEY else str(totals[key]) if key in ('adults','children') else f'ИТОГО: {len(rows)}' if key=='number' else ''} for key,_ in COLUMNS]
-    return {'rows':[r['contract'] for r in rows],'table_rows':rows,'columns':columns,'footer':footer,'totals':totals,'count':len(rows),'dateform':dateform,'start_value':start,'end_value':end,'sort':sort,'period':params['period']}
+    return {'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/',params),'rows':[r['contract'] for r in rows],'table_rows':rows,'columns':columns,'footer':footer,'totals':totals,'count':len(rows),'dateform':dateform,'start_value':start,'end_value':end,'sort':sort,'period':params['period']}

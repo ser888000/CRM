@@ -1,0 +1,4 @@
+/* Counts and monetary values: common alignment in workspace and administration. */
+table td.numeric,table th.numeric,table td[data-col="amount"],table td[data-col="paid"],table td[data-col="debt"],table td[data-col="cost"],table td[data-col="profit"],table td[data-col="adults"],table td[data-col="children"],table td[data-col="infants"],table td[data-col="nights"],table td[data-col="contracts"],table td[data-col="incoming"],table td[data-col="outgoing"],table td[data-col="rate"],table td.field-id,table td.field-display_amount,table td.field-display_paid,table td.field-display_cost,table td.field-display_profit,table td.field-incoming_amount,table td.field-outgoing_amount,table td.field-display_rate{ text-align:right;font-variant-numeric:tabular-nums; }
+
+table .field-id,table .field-source_id,table .field-target_id,table .field-sort_order,table input[type="number"],table input[inputmode="decimal"]{text-align:right;font-variant-numeric:tabular-nums}

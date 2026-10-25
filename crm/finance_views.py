@@ -57,20 +57,33 @@ class FinanceFilters(forms.Form):
 @permission_required('crm.view_payment',raise_exception=True)
 @never_cache
 def journal(request):
-    from .journal_period import prepare
+    from .journal_period import prepare,has_value_filters,reset_link
     saved=request.session.get('finance_journal','')
     params=prepare(request.GET,saved)
     if 'reset' in request.GET or not request.GET and saved:
         source=params if 'reset' in request.GET else prepare(QueryDict(saved))
         return redirect(back_url(source.urlencode()))
+    search_all_dates=has_value_filters(params,('customer','number','operator','method','kind'))
     filters=FinanceFilters(params);rows=[];labels=dict(payment_operation_choices())
     if filters.is_valid():
         data=filters.cleaned_data
         payments=Payment.objects.select_related('contract__customer','contract__operator','method','legacy_payer').order_by('-date','-pk')
-        if data['start']:payments=payments.filter(date__gte=data['start'])
-        if data['end']:payments=payments.filter(date__lte=data['end'])
+        if data['start'] and not search_all_dates:payments=payments.filter(date__gte=data['start'])
+        if data['end'] and not search_all_dates:payments=payments.filter(date__lte=data['end'])
         if data['kind']:payments=payments.filter(kind=data['kind'])
         if data['method']:payments=payments.filter(method__name=data['method'])
+        if search_all_dates:
+            from django.db.models import Q
+            from .models import Customer,Operator
+            if data['customer']:
+                ids=[pk for pk,name in Customer.objects.values_list('pk','name') if normalize_location(data['customer']) in normalize_location(name)]
+                payments=payments.filter(Q(legacy_payer_id__in=ids)|Q(legacy_payer__isnull=True,contract__customer_id__in=ids))
+            if data['number']:
+                ids=[pk for pk,number in Contract.objects.values_list('pk','number') if normalize_location(data['number']) in normalize_location(number)]
+                payments=payments.filter(contract_id__in=ids)
+            if data['operator']:
+                ids=[pk for pk,name in Operator.objects.values_list('pk','name') if normalize_location(data['operator']) in normalize_location(name)]
+                payments=payments.filter(contract__operator_id__in=ids)
         for payment in payments:
             fields={'customer':str(payment.payer),'number':str(payment.contract),'operator':str(payment.contract.operator)}
             if any(normalize_location(data[key]) not in normalize_location(value) for key,value in fields.items() if data[key]):continue
@@ -100,7 +113,7 @@ def journal(request):
         if number:
             query=params.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
     footer=[{'key':key,'text':money(incoming) if key=='incoming' else money(outgoing) if key=='outgoing' else f'ИТОГО: {count}' if key=='date' else ''} for key,_ in COLUMNS]
-    return render(request,'crm/finances.html',{'filters':filters,'dateform':filters,'columns':columns,'table_rows':page.object_list,'rows':[r['payment'] for r in page.object_list],'count':count,'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'footer':footer,'sort':sort,'period':params['period'],'start_value':params['start'],'end_value':params['end'],'page':page,'pagination':pagination,'return_query':safe_query(params.urlencode())})
+    return render(request,'crm/finances.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/finances/',params),'filters':filters,'dateform':filters,'columns':columns,'table_rows':page.object_list,'rows':[r['payment'] for r in page.object_list],'count':count,'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'footer':footer,'sort':sort,'period':params['period'],'start_value':params['start'],'end_value':params['end'],'page':page,'pagination':pagination,'return_query':safe_query(params.urlencode())})
 
 class FinanceEditor(PaymentForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)

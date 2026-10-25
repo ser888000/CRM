@@ -41,6 +41,21 @@ class CustomerFilters(forms.Form):
     email=forms.CharField(label='E-mail',required=False,max_length=250)
     kind=forms.ChoiceField(label='Тип заказчика',required=False,choices=[('','Все заказчики'),('person','Физическое лицо'),('company','Юридическое лицо')])
 
+
+def matching_rows(data):
+    rows=[]
+    qs=Customer.objects.annotate(contract_count=Count('contract',distinct=True)).only('id','name','kind','main_phone','phones','main_email','emails','inn').order_by('name','pk')
+    if data['kind']:qs=qs.filter(kind=data['kind'])
+    for customer in qs:
+        if normalize_location(data['name']) not in normalize_location(customer.name+' '+customer.inn):continue
+        contact_data={key:getattr(customer,key) for key in ('main_phone','phones','main_email','emails')}
+        if data['phone'] and (not phone_key(data['phone']) or not any(phone_key(data['phone']) in v for v in contacts(contact_data,'phone'))):continue
+        if data['email'] and not any(data['email'].strip().casefold() in v for v in contacts(contact_data,'email')):continue
+        values={'name':customer.name,'kind':customer.get_kind_display(),'phone':' · '.join(v for v in (customer.main_phone,customer.phones) if v),'email':' · '.join(v for v in (customer.main_email,customer.emails) if v),'inn':customer.inn,'contracts':customer.contract_count}
+        cells=[{'key':key,'text':str(values[key]),'filter_value':str(values[key]) or '—'} for key,_ in COLUMNS]
+        rows.append({'customer':customer,'values':values,'cells':cells})
+    return rows
+
 @login_required
 @permission_required('crm.view_customer',raise_exception=True)
 @never_cache
@@ -51,22 +66,13 @@ def journal(request):
     filters=CustomerFilters(request.GET);rows=[]
     if filters.is_valid():
         data=filters.cleaned_data
-        qs=Customer.objects.annotate(contract_count=Count('contract',distinct=True)).only('id','name','kind','main_phone','phones','main_email','emails','inn').order_by('name','pk')
-        if data['kind']:qs=qs.filter(kind=data['kind'])
-        for customer in qs:
-            if normalize_location(data['name']) not in normalize_location(customer.name+' '+customer.inn):continue
-            contact_data={key:getattr(customer,key) for key in ('main_phone','phones','main_email','emails')}
-            if data['phone'] and (not phone_key(data['phone']) or not any(phone_key(data['phone']) in v for v in contacts(contact_data,'phone'))):continue
-            if data['email'] and not any(data['email'].strip().casefold() in v for v in contacts(contact_data,'email')):continue
-            values={'name':customer.name,'kind':customer.get_kind_display(),'phone':' · '.join(v for v in (customer.main_phone,customer.phones) if v),'email':' · '.join(v for v in (customer.main_email,customer.emails) if v),'inn':customer.inn,'contracts':customer.contract_count}
-            cells=[{'key':key,'text':str(values[key]),'filter_value':str(values[key]) or '—'} for key,_ in COLUMNS]
-            rows.append({'customer':customer,'values':values,'cells':cells})
+        rows=matching_rows(data)
         request.session['customer_journal']=safe_query(request.GET.urlencode())
     columns=[]
     for index,(key,label) in enumerate(COLUMNS):
         selected=request.GET.getlist('f_'+key)
         values=sorted({r['cells'][index]['filter_value'] for r in rows}|set(selected),key=normalize_location)
-        columns.append({'key':key,'label':label,'options':[{'value':v,'selected':v in selected} for v in values],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
+        columns.append({'key':key,'label':label,'remote':len(values)>100,'options':[{'value':v,'selected':v in selected} for v in dict.fromkeys([*selected,*values[:100]])],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
     rows=[r for r in rows if all(not request.GET.getlist('f_'+c['key']) or c['filter_value'] in request.GET.getlist('f_'+c['key']) for c in r['cells'])]
     sort=request.GET.get('sort','name');key=sort.lstrip('-')
     if key in dict(COLUMNS):rows.sort(key=lambda r:r['values'][key] if key=='contracts' else normalize_location(r['values'][key]),reverse=sort.startswith('-'))
@@ -109,3 +115,16 @@ def editor(request,pk=None):
         if customer.kind=='person':similar=[c for c in customer_matches(model_to_dict(customer))[1] if c.pk!=customer.pk]
         elif customer.inn:similar=list(Customer.objects.filter(kind='company',inn=customer.inn).exclude(pk=customer.pk))
     return render(request,'crm/customer_editor.html',{'form':form,'customer':customer,'is_new':not pk,'editable':editable,'back_url':back_url(query),'return_query':safe_query(query),'visible_fields':[f for f in form if not f.is_hidden],'contracts':contracts[:100],'contract_count':contracts.count(),'similar':similar[:10]})
+
+@login_required
+@permission_required('crm.view_customer',raise_exception=True)
+@never_cache
+def column_choices(request):
+    from django.http import JsonResponse
+    key=request.GET.get('column','')
+    if key not in dict(COLUMNS):return JsonResponse({'values':[]},status=400)
+    form=CustomerFilters(request.GET)
+    if not form.is_valid():return JsonResponse({'values':[]})
+    query=normalize_location(request.GET.get('choice_search','')[:250])
+    values=sorted({cell['filter_value'] for row in matching_rows(form.cleaned_data) for cell in row['cells'] if cell['key']==key and query in normalize_location(cell['filter_value'])},key=normalize_location)
+    return JsonResponse({'values':values[:100],'more':len(values)>100})

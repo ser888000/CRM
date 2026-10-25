@@ -30,12 +30,12 @@ def main(path):
     tables={'COMPANY':customers,'LIST_DOCUMENTS':docs,'LIST_MANYS':payments,'LIST_CONTACT_COMPANY':tasks}
     for table,key,ids in [('LIST_TOVAR_DOC','ID_DOC',doc_ids),('LIST_TELEPHONES','ID_COMPANY',customer_ids),('LIST_EMAIL_CLIENT','ID_COMPANY',customer_ids),('LIST_REQUIS_FIZ','ID_COMPANY',customer_ids),('LIST_REQUIS_COMPANY','ID_COMPANY',customer_ids)]:
         tables[table]=[r for r in rows('SELECT * FROM dbo.'+table) if r[key] in ids]
-    for table in ['TIP_DOCUMENTS','VID_CONTACT','VID_COMPANY','LIST_VALUTA','LIST_SPR_SCHETS_MONY','ADD_SPR_OPEROTOR','ADD_SPR_PITANIE','ADD_SPR_TRANSFER','ADD_SPR_STRAHOVKA','ADD_SPR_country','ADD_SPR_city_fly']:
-        columns={'TIP_DOCUMENTS':'ID_TIP_DOCUMENT,TIP_DOCUMENT','VID_CONTACT':'ID_VID_CONTACT,DISCRIPTION_VID_CONTCT','VID_COMPANY':'ID_VID_COMPANY,DISCRIPTION','LIST_VALUTA':'id_valuta,NAME_VALUTA,CODE,NCODE','LIST_SPR_SCHETS_MONY':'ID_LIST_SPR_LIST_SCHETS_MONY,NAME_SCHET,ID_VALUTA'}
+    for table in ['PRIZNAK_DOCUMENTS','TIP_DOCUMENTS','VID_CONTACT','VID_COMPANY','LIST_VALUTA','LIST_SPR_SCHETS_MONY','ADD_SPR_OPEROTOR','ADD_SPR_PITANIE','ADD_SPR_TRANSFER','ADD_SPR_STRAHOVKA','ADD_SPR_country','ADD_SPR_city_fly']:
+        columns={'PRIZNAK_DOCUMENTS':'ID_PRIZNAK_DOCUMENT,PRIZNAK_DOCUMENT','TIP_DOCUMENTS':'ID_TIP_DOCUMENT,TIP_DOCUMENT','VID_CONTACT':'ID_VID_CONTACT,DISCRIPTION_VID_CONTCT','VID_COMPANY':'ID_VID_COMPANY,DISCRIPTION','LIST_VALUTA':'id_valuta,NAME_VALUTA,CODE,NCODE','LIST_SPR_SCHETS_MONY':'ID_LIST_SPR_LIST_SCHETS_MONY,NAME_SCHET,ID_VALUTA'}
         tables[table]=rows('SELECT '+columns.get(table,'id,name')+' FROM dbo.'+table)
     # Explicit allowlist: no passwords, SIP credentials, tokens or integration settings.
     tables['MANAGERS']=rows('SELECT ID_MANAGER,MANAGER_NAME FROM dbo.MANAGERS')
-    manifest={'format':'aborigen-legacy-history-v1','source_key':'masterhost:u340795_crm','snapshot':'2026-10-25T01:35:50','tables':tables}
+    manifest={'format':'aborigen-legacy-history-v2','source_key':'masterhost:u340795_crm','snapshot':'2026-10-25T01:35:50','tables':tables}
     def encode(value):
         if isinstance(value,(datetime.datetime,datetime.date,datetime.time)):return value.isoformat()
         if isinstance(value,decimal.Decimal):return str(value)

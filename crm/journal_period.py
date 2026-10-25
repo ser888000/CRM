@@ -30,3 +30,15 @@ def prepare(params,saved=''):
     data['period']='today' if data['start']==data['end']==today.isoformat() else 'month' if data['start']==month_start and data['end']==month_end else 'custom'
     data.pop('reset',None)
     return data
+
+
+def has_value_filters(params,fields):
+    return any(str(params.get(field,'')).strip() for field in fields)
+
+
+def reset_link(path,params):
+    data=QueryDict('',mutable=True)
+    for key in ('start','end','period','status','sort'):
+        if params.get(key):data[key]=params[key]
+    data['reset']='1'
+    return path+'?'+data.urlencode()
