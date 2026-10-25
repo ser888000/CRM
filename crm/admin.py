@@ -190,9 +190,9 @@ class OperatorAdmin(AuditedAdmin):
 
 @admin.register(ContractType,PaymentMethod,Meal,Transfer,Insurance,FuelSurcharge)
 class ReferenceAdmin(AuditedAdmin):
-    list_editable=['is_default']
+    list_editable=['sort_order','is_default']
     search_fields=['name']
-    list_display=['name','is_default']
+    list_display=['name','sort_order','is_default']
 @admin.register(Payment)
 class PaymentAdmin(AuditedAdmin):
     change_list_template='admin/crm/payment/change_list.html'
@@ -316,6 +316,6 @@ class PaymentOperationAdmin(AuditedAdmin):
 from .models import TaskType
 @admin.register(TaskType)
 class TaskTypeAdmin(AuditedAdmin):
-    list_display=['name','description','for_contract','is_default']
-    list_editable=['for_contract','is_default']
+    list_display=['name','description','sort_order','for_contract','is_default']
+    list_editable=['sort_order','for_contract','is_default']
     search_fields=['name','description']

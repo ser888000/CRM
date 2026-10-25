@@ -8,4 +8,4 @@
 
 .field [data-new-customer]{display:flex;margin-top:10px;width:fit-content;font-size:12px;padding:8px 12px}
 
-.contract-task-row{display:grid;grid-template-columns:minmax(180px,1fr) 200px;gap:20px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}.contract-task-row>label{display:flex;gap:10px;align-items:center}.contract-task-row input[type=checkbox]{width:auto}.contract-task-row>div label{font-size:12px;color:var(--muted);display:block}@media(max-width:600px){.contract-task-row{grid-template-columns:1fr}}
+.contract-task-row{display:flex;gap:24px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:nowrap}.contract-task-row>label{display:flex;gap:10px;align-items:center;flex:0 1 340px;min-width:100px;margin:0}.contract-task-row input[type=checkbox]{width:auto;flex-shrink:0}.contract-task-row>div{display:flex;gap:8px;align-items:center;flex-shrink:0}.contract-task-row>div label{font-size:12px;color:var(--muted);margin:0}.contract-task-row input[type=date]{width:160px}.contract-task-list{overflow-x:auto}

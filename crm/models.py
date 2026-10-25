@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.db.models import Sum
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 class DefaultReference(models.Model):
@@ -76,11 +77,16 @@ def booking_url(template,number):
     except (ValueError,KeyError,IndexError,AttributeError):
         return ''
 
-class NamedReference(DefaultReference):
-    name=models.CharField('Название',max_length=100,unique=True)
+class SortedReference(DefaultReference):
+    sort_order=models.IntegerField('Порядок сортировки',null=True,blank=True,help_text='Сначала записи с числом по возрастанию, затем записи без числа по алфавиту.')
     class Meta(DefaultReference.Meta):
         abstract=True
-        ordering=['name']
+        ordering=[models.F('sort_order').asc(nulls_last=True),Lower('name'),'name','pk']
+
+class NamedReference(SortedReference):
+    name=models.CharField('Название',max_length=100,unique=True)
+    class Meta(SortedReference.Meta):
+        abstract=True
     def __str__(self): return self.name
 
 class ContractType(NamedReference):
@@ -260,14 +266,13 @@ def payment_operation_choices():
     return [(code,labels.get(code,label)) for code,label in Payment.KINDS]
 
 
-class TaskType(DefaultReference):
+class TaskType(SortedReference):
     for_contract=models.BooleanField('Задачи по договору',default=False)
     name=models.CharField('Задача',max_length=250,unique=True)
     description=models.TextField('Описание',blank=True)
-    class Meta(DefaultReference.Meta):
+    class Meta(SortedReference.Meta):
         verbose_name='Тип задачи'
         verbose_name_plural='Типы задач'
-        ordering=['name']
     def __str__(self):return self.name
 
 class TaskTemplate(models.Model):

@@ -195,14 +195,14 @@ def actions(request):
         raw=request.POST.getlist('tasks')
         if not 1<=len(raw)<=500 or any(not v.isdecimal() or len(v)>18 for v in raw):raise ValueError
         ids={int(v) for v in raw}
-        if action not in ('complete','reopen','reschedule','tomorrow'):raise ValueError
+        if action not in ('complete','reopen','reschedule','today','tomorrow'):raise ValueError
         due=forms.DateField().clean(request.POST.get('due')) if action=='reschedule' else None
     except (ValueError,forms.ValidationError):
         messages.error(request,'Выберите задачи и действие. Для переноса укажите дату.');return redirect(target)
-    if action=='tomorrow':due=timezone.localdate()+timedelta(days=1)
+    if action in ('today','tomorrow'):due=timezone.localdate()+timedelta(days=action=='tomorrow')
     count=0;skipped=0;contracts=set()
     for task in Task.objects.select_for_update().filter(pk__in=ids):
-        if action in ('reschedule','tomorrow'):
+        if action in ('reschedule','today','tomorrow'):
             if task.done:skipped+=1;continue
             field='due';new=due
         else:field='done';new=action=='complete'
