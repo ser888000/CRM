@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded',()=>{
    if(tourist)return;
    const legal=kind?.value==='company';
    const legalNames=['company_name','inn','kpp','ogrn','legal_address','bank_name','bik','account','correspondent_account','representative','representative_basis'];
-   const personNames=['surname','given_name','patronymic','birthday','passport_type','passport_number','passport_issued','passport_issued_by','passport_code','passport','address'];
+   const personNames=['surname','given_name','patronymic','birthday','passport_type','passport_number','passport_issued','passport_issued_by','passport_code','address'];
    legalNames.forEach(n=>{const node=get(n)?.closest('.field,.form-row');if(node)node.hidden=!legal});
    personNames.forEach(n=>{const node=get(n)?.closest('.field,.form-row');if(node)node.hidden=legal});
    const label=form.querySelector(`[for="${output.id}"]`);if(label)label.textContent=legal?'Наименование заказчика':'ФИО заказчика';

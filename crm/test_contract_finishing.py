@@ -34,7 +34,7 @@ class ContractFinishingTests(TestCase):
         self.assertEqual(tourist.name,'EXAMPLE TEST');self.assertEqual(list(form.fields)[:3],['surname','given_name','name'])
         tourist.given_name='NEW';tourist.save(update_fields=['given_name']);tourist.refresh_from_db()
         self.assertEqual(tourist.name,'EXAMPLE NEW')
-        self.assertContains(self.client.get('/admin/crm/tourist/add/'),'crm/customer_name.js')
+        self.assertContains(self.client.get('/admin/crm/tourist/add/'),'crm/customer_name_v2.js')
     def test_card_add_tourist_without_posting_computed_name(self):
         response=self.client.post(f'/contracts/{self.c.pk}/',{'action':'tourist','tourist-new-surname':'EXAMPLE','tourist-new-given_name':'TEST'})
         self.assertEqual(response.status_code,302);self.assertEqual(self.c.lines.get().tourist.name,'EXAMPLE TEST')

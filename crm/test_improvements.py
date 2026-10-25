@@ -51,7 +51,7 @@ class JournalImprovementTests(TestCase):
         form=CustomerCardForm({'surname':'Иванов','given_name':'Иван','patronymic':'Иванович','name':'Неверное ФИО'})
         self.assertTrue(form.is_valid(),form.errors);self.assertEqual(form.save().name,'Иванов Иван Иванович')
         admin=self.client.get('/admin/crm/customer/add/')
-        self.assertContains(admin,'crm/customer_name.js')
+        self.assertContains(admin,'crm/customer_name_v2.js')
         self.assertEqual([k for k in CustomerForm().fields if k in ('surname','given_name','patronymic','name')],['surname','given_name','patronymic','name'])
         self.assertEqual(CustomerCardForm().fields['phones'].widget.attrs['rows'],3)
     def test_defaults_suggestions_and_task_empty_section(self):

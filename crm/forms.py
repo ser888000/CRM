@@ -72,7 +72,7 @@ class PaymentForm(forms.ModelForm):
         self.fields['contract'].label_from_instance=lambda c:f'{c} · {c.customer}'
         apply_reference_defaults(self,kwargs.get('initial'))
     class Media:
-        js=['crm/payment_customer.js?v=20261025finance']
+        js=['crm/payment_customer_v2.js']
 
 
 class CustomerForm(forms.ModelForm):
@@ -101,7 +101,7 @@ class CustomerForm(forms.ModelForm):
             if data['kind']=='company' and value and (not re.fullmatch(r'[0-9]+',value) or len(value) not in lengths):self.add_error(key,'Проверьте количество цифр: '+', '.join(map(str,lengths))+'.')
         return data
     class Media:
-        js=['crm/customer_name.js']
+        js=['crm/customer_name_v2.js']
 
 
 class TouristForm(forms.ModelForm):
@@ -120,4 +120,4 @@ class TouristForm(forms.ModelForm):
         if not data['name']:self.add_error('surname','Укажите фамилию и имя туриста.')
         return data
     class Media:
-        js=['crm/customer_name.js']
+        js=['crm/customer_name_v2.js']

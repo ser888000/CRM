@@ -112,7 +112,7 @@ class FinanceEditor(PaymentForm):
         self.fields['contract'].widget.attrs['data-contracts-url']='/finances/contracts/'
         if self.instance.pk:self.fields['version'].initial=version(self.instance)
     class Media:
-        js=['crm/payment_customer.js?v=20261025finance']
+        js=['crm/payment_customer_v2.js']
 
 @login_required
 @never_cache
