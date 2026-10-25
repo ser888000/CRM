@@ -15,17 +15,18 @@ def prepare(params,saved=''):
         for key in ('start','end','period'):
             if previous.get(key):data[key]=previous[key]
     mode=data.get('period','')
+    month_start=today.replace(day=1).isoformat()
+    month_end=((today.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)).isoformat()
     if mode in ('today','tomorrow'):
-        day=(today+timedelta(days=mode=='tomorrow')).isoformat();data['start']=data['end']=day
+        data['start']=data['end']=today.isoformat()
     elif mode=='month':
-        data['start']=today.replace(day=1).isoformat()
-        data['end']=((today.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)).isoformat()
+        data['start']=month_start;data['end']=month_end
     else:
         start=data.get('start','');end=data.get('end','')
         if not start and not end:start=end=today.isoformat()
         elif not start:start=end
         elif not end:end=start
         data['start']=start;data['end']=end
-    data['period']='today' if data['start']==data['end']==today.isoformat() else 'tomorrow' if data['start']==data['end']==(today+timedelta(days=1)).isoformat() else 'custom'
+    data['period']='today' if data['start']==data['end']==today.isoformat() else 'month' if data['start']==month_start and data['end']==month_end else 'custom'
     data.pop('reset',None)
     return data

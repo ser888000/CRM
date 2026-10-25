@@ -21,15 +21,15 @@ class SharedJournalPeriodTests(TestCase):
                         response=self.client.get(path+suffix,follow=True)
                         self.assertEqual(response.context['count'],1);self.assertEqual(response.context['period'],'today')
                         self.assertEqual(response.context['start_value'],self.today.isoformat());self.assertEqual(response.context['end_value'],self.today.isoformat())
-    def test_tomorrow_restore_refresh_and_reset_only_filters(self):
+    def test_month_restore_refresh_and_reset_only_filters(self):
         with patch('crm.journal_period.timezone.localdate',return_value=self.today):
             for path in ('/','/finances/'):
-                response=self.client.get(path,{'period':'tomorrow','customer':'нет','f_number':'missing'})
+                response=self.client.get(path,{'period':'month','customer':'нет','f_number':'missing'})
                 self.assertEqual(response.context['count'],0)
                 response=self.client.get(path,follow=True)
-                self.assertEqual(response.context['period'],'tomorrow');self.assertEqual(response.context['count'],0)
+                self.assertEqual(response.context['period'],'month');self.assertEqual(response.context['count'],0)
                 response=self.client.get(path+'?reset=1',follow=True)
-                self.assertEqual(response.context['period'],'tomorrow');self.assertEqual(response.context['count'],1)
+                self.assertEqual(response.context['period'],'month');self.assertEqual(response.context['count'],2)
                 self.assertNotIn('customer',response.wsgi_request.GET);self.assertNotIn('f_number',response.wsgi_request.GET)
                 self.assertContains(response,'aria-pressed="true"')
     def test_custom_dates_single_bound_and_invalid_dates(self):
@@ -47,10 +47,21 @@ class SharedJournalPeriodTests(TestCase):
     def test_today_is_relative_on_next_day_and_states_are_separate(self):
         with patch('crm.journal_period.timezone.localdate',return_value=self.today):
             self.client.get('/?period=today&customer=Петров')
-            self.client.get('/finances/?period=tomorrow')
+            self.client.get('/finances/?period=month')
         with patch('crm.journal_period.timezone.localdate',return_value=self.today+timedelta(days=1)):
             response=self.client.get('/',follow=True)
             self.assertEqual(response.context['start_value'],'2026-10-26');self.assertEqual(response.context['period'],'today')
             self.assertEqual(response.wsgi_request.GET.get('customer'),'Петров')
             response=self.client.get('/finances/',follow=True)
-            self.assertEqual(response.context['start_value'],'2026-10-27');self.assertEqual(response.context['period'],'tomorrow')
+            self.assertEqual(response.context['start_value'],'2026-10-01');self.assertEqual(response.context['period'],'month')
+
+    def test_month_rolls_forward_and_handles_february(self):
+        for day,end in [(date(2028,2,15),'2028-02-29'),(date(2027,2,15),'2027-02-28'),(date(2026,12,15),'2026-12-31')]:
+            with patch('crm.journal_period.timezone.localdate',return_value=day):
+                for path in ('/','/finances/'):
+                    response=self.client.get(path,{'period':'month'})
+                    self.assertEqual(response.context['start_value'],day.replace(day=1).isoformat())
+                    self.assertEqual(response.context['end_value'],end);self.assertEqual(response.context['period'],'month')
+        with patch('crm.journal_period.timezone.localdate',return_value=date(2027,1,1)):
+            response=self.client.get('/finances/',follow=True)
+            self.assertEqual(response.context['start_value'],'2027-01-01');self.assertEqual(response.context['end_value'],'2027-01-31')

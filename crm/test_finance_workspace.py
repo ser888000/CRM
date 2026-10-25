@@ -30,7 +30,7 @@ class FinanceWorkspaceTests(TestCase):
             self.assertEqual(self.client.get('/finances/?period=today').context['count'],0)
             self.assertEqual(self.client.get('/finances/?period=month').context['count'],0)
         response=self.client.get('/finances/?reset=1',follow=True)
-        self.assertEqual(response.context['count'],0);self.assertEqual(response.context['start_value'],'2026-11-01')
+        self.assertEqual(response.context['count'],4);self.assertEqual(response.context['start_value'],'2026-10-01')
         for query in ('start=bad','start=2026-11-01&end=2026-10-01'):
             r=self.client.get('/finances/?'+query);self.assertFalse(r.context['dateform'].is_valid());self.assertEqual(r.context['count'],0)
     def test_totals_include_all_pages(self):
@@ -67,3 +67,28 @@ class FinanceWorkspaceTests(TestCase):
             self.assertEqual(self.client.get(url).status_code,403)
         secure=Client(enforce_csrf_checks=True);secure.force_login(self.user)
         self.assertEqual(secure.post('/finances/new/',self.payment_data()).status_code,403)
+
+    def test_copy_is_unsaved_new_operation_without_notes_or_rate(self):
+        source=self.payments[0];source.rate=Decimal('91.23');source.notes='Не копировать';source.date=date(2020,1,1);source.currency='RUB';source.save()
+        count=Payment.objects.count()
+        self.assertContains(self.client.get(f'/finances/{source.pk}/'),'Копировать')
+        response=self.client.get('/finances/new/',{'copy_from':source.pk,'return_query':'period=month'})
+        self.assertEqual(response.status_code,200);self.assertEqual(Payment.objects.count(),count)
+        form=response.context['form']
+        self.assertIsNone(form.instance.pk);self.assertEqual(form['amount'].value(),Decimal(str(source.amount)))
+        self.assertEqual(str(form['contract'].value()),str(source.contract_id));self.assertEqual(str(form['method'].value()),str(source.method_id))
+        self.assertEqual(form['kind'].value(),source.kind);self.assertEqual(form['currency'].value(),'RUB')
+        self.assertFalse(form['notes'].value());self.assertIsNone(form['rate'].value())
+        from django.utils import timezone
+        self.assertEqual(form['date'].value(),timezone.localdate())
+        response=self.client.post('/finances/new/',self.payment_data(amount='1000,00',notes='',rate='',return_query='period=month'))
+        self.assertEqual(response.status_code,302);self.assertEqual(Payment.objects.count(),count+1)
+        source.refresh_from_db();self.assertEqual(source.notes,'Не копировать');self.assertEqual(source.rate,Decimal('91.23'))
+    def test_copy_permissions_and_compact_journal(self):
+        response=self.client.get('/finances/')
+        self.assertNotContains(response,'finance-metrics');self.assertNotContains(response,'Движение денег по договорам')
+        self.assertContains(response,'ИТОГО:')
+        for source in ('not-id','999999999'):
+            self.assertEqual(self.client.get('/finances/new/',{'copy_from':source}).status_code,404)
+        viewer=get_user_model().objects.create_user('copy-viewer');viewer.user_permissions.add(Permission.objects.get(codename='view_payment'));self.client.force_login(viewer)
+        self.assertEqual(self.client.get('/finances/new/',{'copy_from':self.payments[0].pk}).status_code,403)

@@ -1,8 +1,8 @@
 {% extends 'crm/base.html' %}{% load static money %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'crm/contract_card.css' %}?v=20261025b"><link rel="stylesheet" href="{% static 'crm/journal.css' %}?v=20261025period"><link rel="stylesheet" href="{% static 'crm/finances.css' %}?v=20261025period">{% endblock %}
 {% block content %}
-<div class="finance-heading"><div><h1>Финансы</h1><p class="muted">Движение денег по договорам · суммы в рублях</p></div>{% if perms.crm.add_payment %}<a class="button" href="{% url 'finance_new' %}?return_query={{ return_query|urlencode }}">+ Финансовая операция</a>{% endif %}</div>
-<div class="metrics finance-metrics"><div><small>Операций</small><strong>{{ count }}</strong></div><div class="positive"><small>Поступление</small><strong>{{ incoming|money }} <span>₽</span></strong></div><div><small>Расход</small><strong>{{ outgoing|money }} <span>₽</span></strong></div><div><small>Разница поступлений и расходов</small><strong>{{ balance|money }} <span>₽</span></strong></div></div>
+<h1>Финансы</h1>
+{% if perms.crm.add_payment %}<a class="button" href="{% url 'finance_new' %}?return_query={{ return_query|urlencode }}">+ Финансовая операция</a>{% endif %}
 <form id="journal-filters" method="get"><div class="finance-filters">{{ filters.non_field_errors }}<div class="finance-search">{% for field in filters %}{% if field.name != 'start' and field.name != 'end' %}<div><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endif %}{% endfor %}<div class="finance-filter-actions"><button>Применить</button><button class="button secondary" name="reset" value="1">Сбросить</button></div></div>{% include 'crm/journal_dates.html' %}</div>
 <input type="hidden" name="sort" id="journal-sort" value="{{ sort }}">
 <details class="finance-columns"><summary>Видимость колонок и порядок</summary><div id="columns"></div><small>Перетаскивайте заголовки, чтобы изменить порядок колонок.</small></details>

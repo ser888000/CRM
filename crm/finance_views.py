@@ -122,7 +122,16 @@ def editor(request,pk=None):
     if not request.user.has_perms(['crm.view_payment','crm.change_payment' if pk else 'crm.add_payment']):raise PermissionDenied
     payment=get_object_or_404(Payment.objects.select_for_update(),pk=pk) if pk else Payment()
     before=model_to_dict(payment);current=version(payment) if pk else ''
-    form=FinanceEditor(request.POST if request.method=='POST' else None,instance=payment)
+    initial={}
+    if not pk and request.method=='GET' and request.GET.get('copy_from'):
+        source_id=request.GET['copy_from']
+        if not source_id.isdecimal() or len(source_id)>18:
+            from django.http import Http404
+            raise Http404
+        source=get_object_or_404(Payment.objects.select_related('contract'),pk=source_id)
+        initial={key:getattr(source,key) for key in ('contract','kind','amount','method','currency')}
+        initial.update(customer=source.contract.customer_id,date=timezone.localdate(),notes='',rate=None)
+    form=FinanceEditor(request.POST if request.method=='POST' else None,instance=payment,initial=initial)
     query=request.POST.get('return_query','') if request.method=='POST' else request.GET.get('return_query','')
     if request.method=='POST' and form.is_valid():
         if pk and form.cleaned_data['version']!=current:form.add_error(None,'Операция изменена в другом окне. Обновите страницу и проверьте данные.')
