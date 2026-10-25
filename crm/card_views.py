@@ -8,7 +8,7 @@ from django.http import Http404
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
 from django.forms.models import model_to_dict
-from .models import Contract,Payment,Booking,ContractLine,Task,Tourist,AuditEvent
+from .models import Contract,Payment,Booking,ContractLine,Task,Tourist,AuditEvent,LegacyRecord
 from .card_forms import CardContractForm,CustomerCardForm,TouristCardForm,CardPaymentForm,BookingCardForm,LineCardForm,TaskCardForm
 from .services import create_tasks,create_contract_tasks,copy_contract
 
@@ -109,7 +109,7 @@ def contract_card(request,pk=None):
                 return redirect('/contracts/'+str(pk)+'/?tab=tourists')
         else:raise PermissionDenied
     if pk:
-        payments=list(contract.payments.select_related('method').order_by('-date','-pk')) if request.user.has_perm('crm.view_payment') else []
+        payments=list(contract.payments.select_related('method','legacy_payer').order_by('-date','-pk')) if request.user.has_perm('crm.view_payment') else []
         for p in payments:p.edit_form=invalid_form if invalid_action=='payment' and invalid_id==str(p.pk) else CardPaymentForm(instance=p,prefix=f'payment-{p.pk}')
         tasks=list(Task.objects.filter(contract=contract).select_related('employee')) if request.user.has_perm('crm.view_task') else []
         for t in tasks:t.edit_form=invalid_form if invalid_action=='task' and invalid_id==str(t.pk) else TaskCardForm(instance=t,prefix=f'task-{t.pk}')
@@ -140,6 +140,12 @@ def contract_card(request,pk=None):
                     event.details.append((label,old,new))
 
     else:payments=[];tasks=[];lines=[];bookings=[];history=[]
-    return render(request,'crm/contract_card.html',{'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
+    legacy_record=LegacyRecord.objects.filter(target_model='crm.Contract',target_id=pk).only('pk','source_id').first() if pk else None
+    snapshot_fields=[]
+    if pk and request.user.has_perm('crm.view_customer'):
+        labels={'FIO_REQUIS_FIZ':'ФИО','FULL_NAME':'Организация','PASPORT_NUMBER':'Паспорт','PASPORT_VIDAN_DATA':'Дата выдачи','PASPORT_VIDAN_KEM':'Кем выдан','KOD_PODRAZDELEN_FIZ':'Код подразделения','ADDRES_PROPIS':'Адрес регистрации','ADRES_YUR':'Юридический адрес','INN':'ИНН','KPP':'КПП','RS':'Расчётный счёт','BANK_NAME':'Банк','KONT_TEL':'Телефон','EMAIL_FIZ':'Email'}
+        for values in contract.legacy_customer_snapshot.values():
+            snapshot_fields.extend((label,str(values[key])) for key,label in labels.items() if values.get(key))
+    return render(request,'crm/contract_card.html',{'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
         'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'contract_task_rows':[{'kind':kind,'selected':str(kind.pk) in {str(v) for v in (form['task_templates'].value() or [])},'date':form[f'task_due_{kind.pk}']} for kind in form.fields['task_templates'].queryset], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
         'payments':payments,'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})

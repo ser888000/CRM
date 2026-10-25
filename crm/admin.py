@@ -200,8 +200,8 @@ class PaymentAdmin(AuditedAdmin):
     fields=['customer','contract','date','kind','method','amount','currency','rate','notes']
     list_display=['date','customer_name','contract','kind','incoming_amount','outgoing_amount','method','display_rate']
     list_filter=['kind','method','date','contract__customer']
-    search_fields=['contract__number','contract__customer__name']
-    list_select_related=['contract__customer','method']
+    search_fields=['contract__number','contract__customer__name','legacy_payer__name']
+    list_select_related=['contract__customer','legacy_payer','method']
     @admin.display(description='Поступление, ₽')
     def incoming_amount(self,obj):return money(obj.amount if obj.kind in ('customer','operator_refund') else 0)
     @admin.display(description='Расход, ₽')
@@ -215,7 +215,7 @@ class PaymentAdmin(AuditedAdmin):
             response.context_data['financial_totals']={'count':qs.count(),'incoming':money(qs.filter(kind__in=['customer','operator_refund']).aggregate(s=Sum('amount'))['s'] or 0),'outgoing':money(qs.filter(kind__in=['operator','customer_refund']).aggregate(s=Sum('amount'))['s'] or 0)}
         return response
     @admin.display(description='Заказчик',ordering='contract__customer__name')
-    def customer_name(self,obj):return obj.contract.customer
+    def customer_name(self,obj):return obj.payer
     def get_urls(self):
         return [path('contracts-for-customer/',self.admin_site.admin_view(self.contracts_for_customer),name='crm_payment_contracts_for_customer')]+super().get_urls()
     def contracts_for_customer(self,request):
@@ -332,6 +332,18 @@ class LibraryEntryAdmin(AuditedAdmin):
 class LegacyImportRunAdmin(admin.ModelAdmin):
     list_display=['created_at','section','source_key','actor']
     readonly_fields=['source_key','section','content_sha256','source_snapshot','created_at','actor','summary','issues']
+    def has_add_permission(self,request):return False
+    def has_change_permission(self,request,obj=None):return False
+    def has_delete_permission(self,request,obj=None):return False
+
+from .models import LegacyRecord
+@admin.register(LegacyRecord)
+class LegacyRecordAdmin(admin.ModelAdmin):
+    def has_view_permission(self,request,obj=None):return request.user.is_active and request.user.is_superuser
+    list_display=['table','source_id','target_model','target_id','status','import_run']
+    list_filter=['table','status']
+    search_fields=['=source_id','=target_id']
+    readonly_fields=['source_key','table','source_id','import_run','payload','target_model','target_id','status']
     def has_add_permission(self,request):return False
     def has_change_permission(self,request,obj=None):return False
     def has_delete_permission(self,request,obj=None):return False

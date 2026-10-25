@@ -157,6 +157,9 @@ class Tourist(DefaultReference):
     def __str__(self): return self.name
 
 class Contract(models.Model):
+    legacy_amount_adjustment=models.DecimalField('Расхождение шапки и строк старого договора',max_digits=14,decimal_places=2,default=0,editable=False)
+    opening_operator_paid=models.DecimalField('Перечислено ТО в старой CRM, за вычетом возвратов',max_digits=14,decimal_places=2,default=0,editable=False)
+    legacy_customer_snapshot=models.JSONField(default=dict,blank=True,editable=False)
     updated_at=models.DateTimeField(auto_now=True,editable=False)
     tourvisor_id=models.CharField('ID онлайн-заявки Турвизора',max_length=40,unique=True,null=True,blank=True,editable=False)
     tourvisor_time=models.CharField('Время создания в Турвизоре',max_length=20,blank=True,editable=False)
@@ -168,7 +171,7 @@ class Contract(models.Model):
     children=models.PositiveIntegerField('Детей',default=0)
     infants=models.PositiveIntegerField('Младенцев',default=0)
     source_currency=models.CharField('Валюта предложения',max_length=3,default='RUB')
-    number = models.CharField('Номер договора Турвизора',max_length=100,blank=True)
+    number = models.CharField('Номер договора',max_length=100,blank=True)
     date = models.DateField('Дата договора',default=timezone.localdate)
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,verbose_name='Заказчик')
     operator = models.ForeignKey(Operator,on_delete=models.PROTECT,verbose_name='Туроператор')
@@ -196,15 +199,15 @@ class Contract(models.Model):
     def clean(self):
         if self.start and self.end and self.end < self.start: raise ValidationError('Окончание тура раньше начала')
     @property
-    def amount(self): return self.lines.aggregate(s=Sum('amount'))['s'] or Decimal('0')
+    def amount(self): return ((self.lines.aggregate(s=Sum('amount'))['s'] or Decimal('0'))+self.legacy_amount_adjustment).quantize(Decimal('0.01'))
     def balance(self,kind):
         p=self.payments.filter(kind=kind).aggregate(s=Sum('amount'))['s'] or Decimal('0')
         r=self.payments.filter(kind=kind+'_refund').aggregate(s=Sum('amount'))['s'] or Decimal('0')
-        return p-r
+        return (p-r).quantize(Decimal('0.01'))
     @property
     def paid(self): return self.balance('customer')
     @property
-    def cost(self): return self.balance('operator')
+    def cost(self): return self.opening_operator_paid+self.balance('operator')
     @property
     def profit(self): return self.amount-self.cost
     @property
@@ -229,6 +232,7 @@ class Booking(models.Model):
     class Meta: verbose_name='Бронь ТО' ; verbose_name_plural='Брони ТО'
 
 class ContractLine(models.Model):
+    tourist_snapshot=models.JSONField('Данные туриста в старом договоре',default=dict,blank=True,editable=False)
     contract = models.ForeignKey(Contract,on_delete=models.CASCADE,related_name='lines')
     tourist = models.ForeignKey(Tourist,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Турист')
     description = models.CharField('Описание',max_length=250)
@@ -237,6 +241,7 @@ class ContractLine(models.Model):
     class Meta: verbose_name='Строка договора'; verbose_name_plural='Строки договора'
 
 class Payment(models.Model):
+    legacy_payer=models.ForeignKey(Customer,on_delete=models.PROTECT,null=True,blank=True,related_name='legacy_payments',editable=False,verbose_name='Плательщик в старой CRM')
     KINDS=[('customer','Поступление от клиента'),('customer_refund','Возврат клиенту'),('operator','Оплата ТО'),('operator_refund','Возврат от ТО')]
     contract = models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='payments',verbose_name='Договор')
     kind = models.CharField('Операция',max_length=30,choices=KINDS)
@@ -247,6 +252,8 @@ class Payment(models.Model):
     rate = models.DecimalField('Справочно: курс',max_digits=14,decimal_places=2,null=True,blank=True,validators=[MinValueValidator(Decimal('0.01'))])
     notes = models.TextField('Примечание',blank=True)
     class Meta: verbose_name='Финансовая операция'; verbose_name_plural='Финансы'
+    @property
+    def payer(self):return self.legacy_payer or self.contract.customer
     def get_kind_display(self):
         return dict(payment_operation_choices()).get(self.kind,self.kind)
     def __str__(self):
@@ -448,3 +455,17 @@ class LibraryAttachment(models.Model):
         ordering=['source_id','pk']
         constraints=[models.UniqueConstraint(fields=['entry','source_id'],name='unique_legacy_library_file')]
     def __str__(self):return self.original_name
+
+class LegacyRecord(models.Model):
+    source_key=models.CharField(max_length=100)
+    table=models.CharField(max_length=80)
+    source_id=models.PositiveIntegerField()
+    import_run=models.ForeignKey(LegacyImportRun,on_delete=models.PROTECT,related_name='records')
+    payload=models.JSONField(default=dict,editable=False)
+    target_model=models.CharField(max_length=100,blank=True)
+    target_id=models.PositiveBigIntegerField(null=True,blank=True)
+    status=models.CharField(max_length=20,default='imported')
+    class Meta:
+        verbose_name='Исходная запись старой CRM'
+        verbose_name_plural='Исходные записи старой CRM'
+        constraints=[models.UniqueConstraint(fields=['source_key','table','source_id'],name='unique_legacy_source_record')]

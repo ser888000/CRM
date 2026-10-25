@@ -68,6 +68,8 @@ def status(request):
 @never_cache
 def start(request):
     require_admin(request.user)
+    from .legacy_history_jobs import state as history_state
+    if history_state().get('state') in ('queued','running'):return JsonResponse({'error':'Сначала дождитесь окончания переноса старой CRM.'},status=409)
     request_path,folder=paths()
     if not (folder/'installed').is_file():return JsonResponse({'error':'Служба обновления ещё не установлена. Выполните первоначальную установку на VPS.'},status=503)
     if state()['busy']:return redirect('update_page')

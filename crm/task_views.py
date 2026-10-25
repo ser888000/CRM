@@ -1,4 +1,5 @@
 """Daily task journal, editor and explicit bulk actions."""
+from django.db.models import Q
 from datetime import timedelta
 import hashlib
 import json
@@ -48,7 +49,7 @@ class TaskFilters(forms.Form):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.order_fields(['q','customer','operator','employee','start','end'])
-        self.fields['employee'].choices=[('','Все сотрудники'),('shared','Общие задачи')]+[(str(u.pk),u.get_full_name() or u.username) for u in get_user_model().objects.filter(is_active=True)]
+        self.fields['employee'].choices=[('','Все сотрудники'),('shared','Общие задачи')]+[(str(u.pk),u.get_full_name() or u.username) for u in get_user_model().objects.filter(Q(is_active=True)|Q(task__isnull=False)).distinct()]
     def clean(self):
         data=super().clean()
         if data.get('start') and data.get('end') and data['end']<data['start']:self.add_error('end','Окончание периода раньше начала.')
@@ -71,12 +72,15 @@ def journal(request):
     if mode in ('today','tomorrow'):
         day=today+timedelta(days=mode=='tomorrow');params['start']=params['end']=day.isoformat()
     filters=TaskFilters(params)
-    tasks=list(Task.objects.select_related('task_type','customer','contract__customer','contract__operator','operator','employee').prefetch_related('contract__bookings').order_by('done','due','pk'))
+    fields=['id','title','due','done','booking_number','task_type__name','customer__name','contract__number','contract__customer__name','contract__operator__name','contract__operator__booking_url_template','operator__name','operator__booking_url_template','employee__first_name','employee__last_name','employee__username']
+    if params.get('q'):fields.append('description')
+    tasks=list(Task.objects.select_related('task_type','customer','contract__customer','contract__operator','operator','employee').only(*fields).prefetch_related('contract__bookings').order_by('done','due','pk'))
     if filters.is_valid():
         data=filters.cleaned_data
         def matches(t):
             customer=t.customer or (t.contract.customer if t.contract_id else None)
-            values={'q':' '.join([t.display_title,t.description,t.booking_number,*[n for n,_ in t.booking_entries]]),'customer':str(customer or ''),'operator':str(t.tour_operator or '')}
+            values={'customer':str(customer or ''),'operator':str(t.tour_operator or '')}
+            if data.get('q'):values['q']=' '.join([t.display_title,t.description,t.booking_number,*[n for n,_ in t.booking_entries]])
             if any(normalize_location(data[k]) not in normalize_location(values[k]) for k in values if data.get(k)):return False
             if data['employee']=='shared' and t.employee_id:return False
             if data['employee'] not in ('','shared') and str(t.employee_id)!=data['employee']:return False
@@ -117,7 +121,9 @@ def journal(request):
     for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
         if number:
             query=request.GET.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
-    for t in rows:t.overdue=not t.done and t.due<today
+    descriptions=dict(Task.objects.filter(pk__in=[t.pk for t in rows]).values_list('pk','description'))
+    for t in rows:
+        t.description=descriptions[t.pk];t.overdue=not t.done and t.due<today
     return render(request,'crm/tasks.html',{'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
 
 class TaskEditorForm(forms.ModelForm):

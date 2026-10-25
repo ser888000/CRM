@@ -66,13 +66,13 @@ def journal(request):
     filters=FinanceFilters(params);rows=[];labels=dict(payment_operation_choices())
     if filters.is_valid():
         data=filters.cleaned_data
-        payments=Payment.objects.select_related('contract__customer','contract__operator','method').order_by('-date','-pk')
+        payments=Payment.objects.select_related('contract__customer','contract__operator','method','legacy_payer').order_by('-date','-pk')
         if data['start']:payments=payments.filter(date__gte=data['start'])
         if data['end']:payments=payments.filter(date__lte=data['end'])
         if data['kind']:payments=payments.filter(kind=data['kind'])
         if data['method']:payments=payments.filter(method__name=data['method'])
         for payment in payments:
-            fields={'customer':str(payment.contract.customer),'number':str(payment.contract),'operator':str(payment.contract.operator)}
+            fields={'customer':str(payment.payer),'number':str(payment.contract),'operator':str(payment.contract.operator)}
             if any(normalize_location(data[key]) not in normalize_location(value) for key,value in fields.items() if data[key]):continue
             payment.incoming=payment.amount if payment.kind in ('customer','operator_refund') else Decimal('0')
             payment.outgoing=payment.amount if payment.kind in ('operator','customer_refund') else Decimal('0')

@@ -26,8 +26,8 @@ def journal_context(params,dateform):
         fields={'customer':customer.name,'email':' '.join([customer.main_email,customer.emails]),'phone':' '.join([customer.main_phone,customer.phones]),'number':str(contract),'operator':str(contract.operator),'country':contract.country}
         if any((not any(phone_key(params[k]) in phone_key(v) for v in [customer.main_phone,*customer.phones.splitlines()])) if k=='phone' else (normalize_location(params[k]) not in normalize_location(fields[k])) for k in fields if params.get(k)):continue
         amounts={kind:sum((p.amount for p in contract.payments.all() if p.kind==kind),Decimal('0')) for kind in ('customer','customer_refund','operator','operator_refund')}
-        amount=sum((l.amount for l in contract.lines.all()),Decimal('0'))
-        paid=amounts['customer']-amounts['customer_refund'];cost=amounts['operator']-amounts['operator_refund']
+        amount=sum((l.amount for l in contract.lines.all()),Decimal('0'))+contract.legacy_amount_adjustment
+        paid=amounts['customer']-amounts['customer_refund'];cost=contract.opening_operator_paid+amounts['operator']-amounts['operator_refund']
         computed={'number':str(contract),'customer':customer.name,'operator':str(contract.operator),'payment_method':str(contract.payment_method) if contract.payment_method else '', 'amount':amount,'paid':paid,'cost':cost,'debt':amount-paid,'profit':amount-cost}
         values={key:computed[key] if key in computed else getattr(contract,key) for key,_ in COLUMNS}
         cells=[]
