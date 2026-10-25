@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django import forms
 from .models import Contract,TaskType,Payment,Customer,Tourist,DepartureCity,Country,Currency,Meal,Transfer,Insurance,FuelSurcharge
 from .services import contract_task_schedule
@@ -5,20 +6,20 @@ from .widgets import LocationInput,MoneyInput
 from .reference_defaults import apply_reference_defaults
 
 class ContractForm(forms.ModelForm):
-    task_templates=forms.ModelMultipleChoiceField(label='Создать задачи (снимите ненужные)',queryset=TaskType.objects.filter(for_contract=True),required=False,widget=forms.CheckboxSelectMultiple)
+    task_templates=forms.ModelMultipleChoiceField(label='Создать задачи (снимите ненужные)',queryset=TaskType.objects.filter(for_contract=True,is_hidden=False),required=False,widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Contract
         fields='__all__'
         widgets={'departure':LocationInput(DepartureCity),'country':LocationInput(Country),'meal':LocationInput(Meal),'transfer':LocationInput(Transfer),'insurance':LocationInput(Insurance),'fuel_surcharge':LocationInput(FuelSurcharge)}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['source_currency']=forms.ChoiceField(label='Валюта предложения',choices=[(c.code,str(c)) for c in Currency.objects.all()],initial='RUB')
+        self.fields['source_currency']=forms.ChoiceField(label='Валюта предложения',choices=[(c.code,str(c)) for c in Currency.objects.filter(Q(is_hidden=False)|Q(code=getattr(self.instance,'source_currency',''))|Q(code=getattr(self.instance,'currency','')))],initial='RUB')
         if not self.instance.pk:self.initial.setdefault('source_currency','RUB')
         if self.instance.pk:
-            self.fields['task_templates'].queryset=TaskType.objects.filter(for_contract=True).exclude(task__contract=self.instance)
+            self.fields['task_templates'].queryset=TaskType.objects.filter(for_contract=True,is_hidden=False).exclude(task__contract=self.instance)
             self.fields['task_templates'].initial=[]
         else:
-            self.fields['task_templates'].initial=TaskType.objects.filter(for_contract=True)
+            self.fields['task_templates'].initial=TaskType.objects.filter(for_contract=True,is_hidden=False)
         apply_reference_defaults(self,kwargs.get('initial'))
         for template in self.fields['task_templates'].queryset:
             field=self.fields.get(f'task_due_{template.pk}')
@@ -52,7 +53,7 @@ class PaymentForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         from .models import payment_operation_choices
         self.fields['kind'].choices=[('','—')]+payment_operation_choices()
-        self.fields['currency']=forms.ChoiceField(label='Справочно: валюта оплаты ТО',required=False,initial='RUB',choices=[('','---------')]+[(c.code,str(c)) for c in Currency.objects.all()])
+        self.fields['currency']=forms.ChoiceField(label='Справочно: валюта оплаты ТО',required=False,initial='RUB',choices=[('','---------')]+[(c.code,str(c)) for c in Currency.objects.filter(Q(is_hidden=False)|Q(code=getattr(self.instance,'source_currency',''))|Q(code=getattr(self.instance,'currency','')))])
         customer=None
         if self.is_bound:
             customer=self.data.get(self.add_prefix('customer'))
@@ -112,6 +113,7 @@ class TouristForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         self.fields['name'].required=False
         self.fields['name'].widget.attrs.update({'readonly':True,'data-person-name':'tourist'})
+        apply_reference_defaults(self,kwargs.get('initial'))
         self.order_fields(['surname','given_name','name'])
     def clean(self):
         data=super().clean()

@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django import forms
 from .forms import ContractForm,CustomerForm,TouristForm
 from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskTemplate,Currency
@@ -42,7 +43,7 @@ class CardPaymentForm(forms.ModelForm):
         super().__init__(*args,**kwargs)
         from .models import payment_operation_choices
         self.fields['kind'].choices=[('','—')]+payment_operation_choices()
-        self.fields['currency']=forms.ChoiceField(label='Валюта оплаты ТО (справочно)',required=False,initial='RUB',choices=[('','—')]+[(c.code,str(c)) for c in Currency.objects.all()])
+        self.fields['currency']=forms.ChoiceField(label='Валюта оплаты ТО (справочно)',required=False,initial='RUB',choices=[('','—')]+[(c.code,str(c)) for c in Currency.objects.filter(Q(is_hidden=False)|Q(code=getattr(self.instance,'source_currency',''))|Q(code=getattr(self.instance,'currency','')))])
         apply_reference_defaults(self,kwargs.get('initial'))
 
 class BookingCardForm(forms.ModelForm):

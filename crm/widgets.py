@@ -7,7 +7,7 @@ class LocationInput(TextInput):
         super().__init__(attrs)
     def get_context(self,name,value,attrs):
         context=super().get_context(name,value,attrs)
-        context['widget']['suggestions']=list((self.reference_model.objects.all() if hasattr(self.reference_model,'sort_order') else self.reference_model.objects.order_by('name')).values_list('name',flat=True))
+        context['widget']['suggestions']=list((self.reference_model.objects.filter(is_hidden=False) if hasattr(self.reference_model,'sort_order') else self.reference_model.objects.filter(is_hidden=False).order_by('name')).values_list('name',flat=True))
         context['widget']['attrs'].update({'autocomplete':'off','role':'combobox','aria-autocomplete':'list','aria-expanded':'false'})
         context['widget']['suggestions_id']=context['widget']['attrs'].get('id',name)+'_locations'
         return context

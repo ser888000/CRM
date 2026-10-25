@@ -16,6 +16,12 @@ from django.db.models import Sum,Q
 from django.utils.html import format_html_join
 
 class AuditedAdmin(admin.ModelAdmin):
+    def __init__(self,model,admin_site):
+        super().__init__(model,admin_site)
+        if hasattr(model,'is_hidden'):
+            self.list_display=tuple(self.list_display)+('is_hidden',)
+            self.list_editable=tuple(self.list_editable)+('is_hidden',)
+
     class Media:
         css={'all':['crm/numeric_tables.css']}
         js=['crm/numeric_tables.js']
@@ -23,7 +29,13 @@ class AuditedAdmin(admin.ModelAdmin):
     def get_list_display(self,request):
         fields=list(super().get_list_display(request))
         if hasattr(self.model,'is_default') and 'is_default' not in fields:fields.append('is_default')
+        if hasattr(self.model,'is_hidden') and 'is_hidden' not in fields:fields.append('is_hidden')
         return fields
+    def get_search_results(self,request,queryset,search_term):
+        queryset,duplicates=super().get_search_results(request,queryset,search_term)
+        if request.path.endswith('/autocomplete/') and hasattr(self.model,'is_hidden'):
+            queryset=queryset.filter(is_hidden=False)
+        return queryset,duplicates
     def get_form(self,request,obj=None,**kwargs):
         base=super().get_form(request,obj,**kwargs)
         from .reference_defaults import apply_reference_defaults
@@ -102,7 +114,7 @@ class ContractAdmin(AuditedAdmin):
     form=ContractForm
     def get_form(self,request,obj=None,**kwargs):
         attrs={}
-        templates=TaskType.objects.filter(for_contract=True)
+        templates=TaskType.objects.filter(for_contract=True,is_hidden=False)
         if obj is not None:
             templates=templates.exclude(task__contract=obj)
         for template in templates:
@@ -357,3 +369,13 @@ class LegacyRecordAdmin(admin.ModelAdmin):
     def has_add_permission(self,request):return False
     def has_change_permission(self,request,obj=None):return False
     def has_delete_permission(self,request,obj=None):return False
+
+
+# Archive a staff choice independently of the employee's permission to sign in.
+from django.contrib.auth import get_user_model
+from .models import EmployeeVisibility
+class EmployeeVisibilityInline(admin.StackedInline):
+    model=EmployeeVisibility
+    extra=1
+    max_num=1
+admin.site._registry[get_user_model()].inlines=tuple(admin.site._registry[get_user_model()].inlines)+(EmployeeVisibilityInline,)

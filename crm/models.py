@@ -11,6 +11,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 
 class DefaultReference(models.Model):
+    is_hidden=models.BooleanField('Скрыть для нового выбора',default=False,help_text='Сохраняется в старых документах, но не предлагается при новом выборе.')
     is_default=models.BooleanField('По умолчанию',default=False,help_text='Подставлять в новые документы. В одном справочнике можно выбрать одну запись.')
     class Meta:
         abstract=True
@@ -285,6 +286,7 @@ class TaskType(SortedReference):
     def __str__(self):return self.name
 
 class TaskTemplate(models.Model):
+    is_hidden=models.BooleanField('Скрыть для нового выбора',default=False)
     task_type=models.ForeignKey(TaskType,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Тип задачи')
     name = models.CharField('Задача',max_length=250)
     anchor = models.CharField('От какой даты',max_length=20,choices=[('created','Создание договора'),('start','Начало тура'),('end','Окончание тура')])
@@ -297,6 +299,13 @@ class TaskTemplate(models.Model):
         verbose_name_plural='Шаблоны задач'
         ordering=['order','pk']
     def __str__(self): return self.task_type.name if self.task_type_id else self.name
+
+class EmployeeVisibility(models.Model):
+    user=models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='directory_visibility',verbose_name='Сотрудник')
+    is_hidden=models.BooleanField('Скрыть при новом выборе сотрудника',default=False)
+    class Meta:
+        verbose_name='Отображение сотрудника в справочниках'
+        verbose_name_plural='Отображение сотрудников в справочниках'
 
 class Task(models.Model):
     task_type=models.ForeignKey(TaskType,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Тип задачи')

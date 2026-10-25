@@ -23,7 +23,7 @@ from .services import repeat_tasks
 
 PERIODS=[('today','Сегодня'),('tomorrow','Завтра')]
 STATUSES=[('all','Все'),('planned','Запланировано'),('done','Выполнено'),('overdue','Просрочено')]
-COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
+COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('contacts','Телефон / Емайл'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
 PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
@@ -48,7 +48,8 @@ class TaskFilters(forms.Form):
     end=forms.DateField(label='по',required=False,widget=forms.DateInput(attrs={'type':'date'}))
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.order_fields(['q','customer','operator','employee','start','end'])
+        self.fields.pop('operator')
+        self.order_fields(['q','customer','employee','start','end'])
         self.fields['employee'].choices=[('','Все сотрудники'),('shared','Общие задачи')]+[(str(u.pk),u.get_full_name() or u.username) for u in get_user_model().objects.filter(Q(is_active=True)|Q(task__isnull=False)).distinct()]
     def clean(self):
         data=super().clean()
@@ -78,11 +79,27 @@ def journal(request):
     params=request.GET.copy()
     if mode in ('today','tomorrow'):
         day=today+timedelta(days=mode=='tomorrow');params['start']=params['end']=day.isoformat()
-    search_all_dates=has_value_filters(params,('q','customer','operator','employee'))
+    params.pop('operator',None)
+    search_all_dates=has_value_filters(params,('q','customer','employee'))
     filters=TaskFilters(params)
-    fields=['id','title','due','done','booking_number','task_type__name','customer__name','contract__number','contract__customer__name','contract__operator__name','contract__operator__booking_url_template','operator__name','operator__booking_url_template','employee__first_name','employee__last_name','employee__username']
+    # Fetch each related record once, rather than duplicating it for every historical task.
+    from .models import Booking
+    fields=['id','title','due','done','booking_number','task_type_id','customer_id','contract_id','operator_id','employee_id']
     if params.get('q'):fields.append('description')
-    tasks=list(Task.objects.select_related('task_type','customer','contract__customer','contract__operator','operator','employee').only(*fields).prefetch_related('contract__bookings').order_by('done','due','pk'))
+    tasks=list(Task.objects.only(*fields).order_by('done','due','pk'))
+    contracts={c.pk:c for c in Contract.objects.filter(pk__in={t.contract_id for t in tasks if t.contract_id}).only('id','number','customer_id','operator_id')}
+    customers={c.pk:c for c in Customer.objects.filter(pk__in={t.customer_id for t in tasks if t.customer_id}|{c.customer_id for c in contracts.values()}).only('id','name','main_phone','main_email','phones','emails')}
+    operators={o.pk:o for o in Operator.objects.filter(pk__in={t.operator_id for t in tasks if t.operator_id}|{c.operator_id for c in contracts.values()})}
+    types=TaskType.objects.in_bulk();employees=get_user_model().objects.only('id','first_name','last_name','username').in_bulk({t.employee_id for t in tasks if t.employee_id})
+    bookings={}
+    for booking in Booking.objects.filter(contract_id__in=contracts):
+        booking._state.fields_cache['contract']=contracts[booking.contract_id]
+        bookings.setdefault(booking.contract_id,[]).append(booking)
+    for c in contracts.values():
+        c._state.fields_cache.update(customer=customers[c.customer_id],operator=operators[c.operator_id])
+        c._prefetched_objects_cache={'bookings':bookings.get(c.pk,[])}
+    for t in tasks:
+        t._state.fields_cache.update(customer=customers.get(t.customer_id),contract=contracts.get(t.contract_id),operator=operators.get(t.operator_id),task_type=types.get(t.task_type_id),employee=employees.get(t.employee_id))
     if filters.is_valid():
         data=filters.cleaned_data
         def matches(t):
@@ -104,12 +121,19 @@ def journal(request):
     def in_status(t,key):return key=='all' or t.done==(key=='done')
     for t in tasks:
         t.display_customer=t.customer or (t.contract.customer if t.contract_id else None)
-        t.column_values={'title':t.display_title,'due':t.due.strftime('%d.%m.%Y'),'customer':str(t.display_customer or '—')+(' / '+str(t.contract) if t.contract_id else ''),'operator':' / '.join([str(t.tour_operator or '—'),*[n for n,_ in t.booking_entries]]),'employee':(t.employee.get_full_name() or t.employee.username) if t.employee else 'Общая задача','status':'Выполнено' if t.done else 'Запланировано'}
+        t.column_values={'title':t.display_title,'due':t.due.strftime('%d.%m.%Y'),'customer':str(t.display_customer or '—')+(' / '+str(t.contract) if t.contract_id else ''),'contacts':((t.display_customer.main_phone or t.display_customer.phones)+' / '+(t.display_customer.main_email or t.display_customer.emails)) if t.display_customer else '—','operator':' / '.join([str(t.tour_operator or '—'),*[n for n,_ in t.booking_entries]]),'employee':(t.employee.get_full_name() or t.employee.username) if t.employee else 'Общая задача','status':'Выполнено' if t.done else 'Запланировано'}
+    if request.GET.get('choice_column') in dict(COLUMNS):
+        from django.http import JsonResponse
+        key=request.GET['choice_column'];needle=normalize_location(request.GET.get('choice_search','')[:250])
+        values=sorted({t.column_values[key] for t in tasks if needle in normalize_location(t.column_values[key])},key=normalize_location)
+        return JsonResponse({'values':values[:100]})
     columns=[]
     for key,label in COLUMNS:
         selected=request.GET.getlist('f_'+key)
         choices=sorted({t.column_values[key] for t in tasks}|set(selected),key=normalize_location)
-        columns.append({'key':key,'label':label,'options':[{'value':v,'selected':v in selected} for v in choices],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
+        remote=len(choices)>100
+        shown=sorted(set(choices[:100])|set(selected),key=normalize_location) if remote else choices
+        columns.append({'key':key,'label':label,'remote':remote,'options':[{'value':v,'selected':v in selected} for v in shown],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
     tasks=[t for t in tasks if all(not request.GET.getlist('f_'+key) or t.column_values[key] in request.GET.getlist('f_'+key) for key,_ in COLUMNS)]
     tabs=[];status_tabs=[]
     for key,label in PERIODS:
@@ -135,6 +159,11 @@ def journal(request):
     return render(request,'crm/tasks.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/tasks/',params),'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
 
 class TaskEditorForm(forms.ModelForm):
+    customer_email=forms.CharField(label='Емайл заказчика',required=False,disabled=True)
+    customer_phone=forms.CharField(label='Телефон заказчика',required=False,disabled=True)
+    class Media:
+        js=['crm/remote_choices.js','crm/task_editor.js']
+
     version=forms.CharField(required=False,widget=forms.HiddenInput)
     repeat=forms.ChoiceField(label='Повтор',required=False,choices=[('','Без повтора'),('day','Каждый день'),('week','Каждую неделю'),('month','Каждый месяц'),('year','Каждый год')])
     occurrences=forms.IntegerField(label='Всего задач, включая первую',min_value=1,max_value=366,initial=1,required=False,help_text='Все повторы создаются сразу, максимум 366.')
@@ -144,6 +173,9 @@ class TaskEditorForm(forms.ModelForm):
         widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['task_type'].widget=forms.HiddenInput()
+        self.fields['title'].label='Задача'
+        if self.instance.pk:self.initial['title']=self.instance.display_title
         self.fields['title'].required=False
         self.fields['title'].help_text='Можно выбрать тип задачи или ввести своё название.'
         self.fields['contract'].queryset=Contract.objects.select_related('customer').order_by('-date','-pk')
@@ -159,8 +191,25 @@ class TaskEditorForm(forms.ModelForm):
             self.fields['version'].initial=version(self.instance);self.fields.pop('repeat');self.fields.pop('occurrences')
         else:self.fields['due'].initial=timezone.localdate()
         apply_reference_defaults(self,kwargs.get('initial'))
+        if not self.initial.get('title') and self.initial.get('task_type'):
+            default_type=self.fields['task_type'].queryset.filter(pk=self.initial['task_type']).first()
+            if default_type:self.initial['title']=default_type.name
+        self.order_fields(['title','description','due','customer','customer_email','customer_phone','contract','operator','booking_number','employee','done','repeat','occurrences','version','task_type'])
+        customer=self.instance.customer or (self.instance.contract.customer if self.instance.contract_id else None)
+        if customer:
+            self.initial.update(customer_email=customer.main_email or customer.emails,customer_phone=customer.main_phone or customer.phones)
+        for name,endpoint in [('customer','customers'),('contract','contracts')]:
+            field=self.fields[name]
+            selected=getattr(self.instance,name+'_id',None) or self.initial.get(name) or field.initial
+            if self.is_bound:selected=self.data.get(name)
+            field.widget.choices=[('','---------')]+[(obj.pk,field.label_from_instance(obj)) for obj in field.queryset.filter(pk=selected)] if selected and str(selected).isdigit() else [('','---------')]
+            field.widget.attrs['data-remote-choices']='/tasks/choices/'+endpoint+'/'
+            field.widget.attrs['data-search-label']='Найти заказчика' if name=='customer' else 'Найти договор'
+
     def clean(self):
         data=super().clean()
+        if data.get('title'):
+            data['task_type']=self.fields['task_type'].queryset.filter(name=data['title']).first()
         if data.get('task_type'):
             data['title']=data['task_type'].name
             if not data.get('description'):data['description']=data['task_type'].description
@@ -197,14 +246,14 @@ def editor(request,pk=None):
                 messages.success(request,f'Создано задач: {1+len(copies)}.' if not pk else 'Задача сохранена.')
                 return redirect(back_url(query))
             except (OverflowError,ValueError):form.add_error('due','Повторы выходят за допустимые даты. Уменьшите количество или измените срок.')
-    return render(request,'crm/task_editor.html',{'form':form,'task':task,'is_new':not pk,'back_url':back_url(query),'return_query':safe_query(query),'visible_fields':[field for field in form if not field.is_hidden]})
+    return render(request,'crm/task_editor.html',{'form':form,'task':task,'is_new':not pk,'back_url':back_url(query),'return_query':safe_query(query),'display_customer':task.customer or (task.contract.customer if task.contract_id else None),'visible_fields':[field for field in form if not field.is_hidden]})
 
 @login_required
 @permission_required(('crm.view_task','crm.change_task'),raise_exception=True)
 @require_POST
 @transaction.atomic
 def actions(request):
-    target=back_url(request.POST.get('return_query',''));action=request.POST.get('action')
+    target=back_url(request.POST.get('return_query',''));action=request.POST.get('quick_action') or request.POST.get('action')
     try:
         raw=request.POST.getlist('tasks')
         if not 1<=len(raw)<=500 or any(not v.isdecimal() or len(v)>18 for v in raw):raise ValueError
@@ -228,3 +277,40 @@ def actions(request):
     Contract.objects.filter(pk__in=contracts).update(updated_at=timezone.now())
     messages.success(request,f'Изменено задач: {count}.'+(f' Выполненные задачи пропущены: {skipped}.' if skipped else ''))
     return redirect(target)
+
+@login_required
+@permission_required('crm.view_task',raise_exception=True)
+@never_cache
+def choices(request,kind):
+    from django.http import JsonResponse
+    query=normalize_location(request.GET.get('q','')[:250]);result=[]
+    if len(query)<2:return JsonResponse({'choices':[]})
+    if kind=='customers':
+        rows=Customer.objects.filter(is_hidden=False).values_list('pk','name','main_phone','main_email')
+        for pk,name,phone,email in rows:
+            if query in normalize_location(name+' '+phone+' '+email):result.append({'id':pk,'label':name})
+            if len(result)==30:break
+    else:
+        for pk,number,name in Contract.objects.order_by('-date','-pk').values_list('pk','number','customer__name'):
+            if query in normalize_location(number+' '+name):result.append({'id':pk,'label':number+' · '+name})
+            if len(result)==30:break
+    return JsonResponse({'choices':result})
+
+@login_required
+@permission_required('crm.view_task',raise_exception=True)
+@never_cache
+def customer_contacts(request,pk):
+    from django.http import JsonResponse
+    customer=get_object_or_404(Customer,pk=pk)
+    return JsonResponse({'email':customer.main_email or customer.emails,'phone':customer.main_phone or customer.phones,'url':'/customers/'+str(pk)+'/'})
+
+@login_required
+@permission_required('crm.view_task',raise_exception=True)
+@never_cache
+def booking_preview(request):
+    from django.http import JsonResponse
+    task=Task(booking_number=request.GET.get('number','')[:150])
+    for field,model in [('contract',Contract),('operator',Operator)]:
+        value=request.GET.get(field,'')
+        if value.isdecimal() and len(value)<19:setattr(task,field,model.objects.filter(pk=value).first())
+    return JsonResponse({'bookings':[{'number':number,'url':url} for number,url in task.booking_entries if url]})

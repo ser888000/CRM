@@ -111,7 +111,7 @@ class TaskWorkspaceTests(TestCase):
 
     def test_filter_rows_and_status_order(self):
         response=self.client.get('/tasks/?period=all')
-        self.assertEqual(list(response.context['filters'].fields),['q','customer','operator','employee','start','end'])
+        self.assertEqual(list(response.context['filters'].fields),['q','customer','employee','start','end'])
         self.assertEqual([t['label'] for t in response.context['tabs']],['Сегодня','Завтра'])
         self.assertEqual([t['label'] for t in response.context['status_tabs']],['Все','Запланировано','Выполнено','Просрочено'])
         with patch('crm.task_views.timezone.localdate',return_value=self.today):
