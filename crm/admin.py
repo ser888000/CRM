@@ -83,7 +83,7 @@ class PaymentInline(admin.TabularInline):
     formfield_overrides={models.DecimalField:{'localize':True,'widget':MoneyInput}}
     model=Payment
     extra=0
-    fields=['date','kind','amount','method','currency','rate','notes']
+    fields=['date','kind','method','amount','currency','rate','notes']
     verbose_name_plural='Финансы по договору'
     show_change_link=True
 
@@ -197,7 +197,7 @@ class ReferenceAdmin(AuditedAdmin):
 class PaymentAdmin(AuditedAdmin):
     change_list_template='admin/crm/payment/change_list.html'
     form=PaymentForm
-    fields=['customer','contract','date','kind','amount','method','currency','rate','notes']
+    fields=['customer','contract','date','kind','method','amount','currency','rate','notes']
     list_display=['date','customer_name','contract','kind','incoming_amount','outgoing_amount','method','display_rate']
     list_filter=['kind','method','date','contract__customer']
     search_fields=['contract__number','contract__customer__name']

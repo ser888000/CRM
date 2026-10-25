@@ -107,7 +107,7 @@ def journal(request):
 class FinanceEditor(PaymentForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)
     class Meta(PaymentForm.Meta):
-        fields=['customer','contract','date','kind','amount','method','currency','rate','notes']
+        fields=['customer','contract','date','kind','method','amount','currency','rate','notes']
         widgets={**PaymentForm.Meta.widgets,'date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'notes':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)

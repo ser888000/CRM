@@ -35,7 +35,7 @@ class TouristCardForm(TouristForm):
 class CardPaymentForm(forms.ModelForm):
     class Meta:
         model=Payment
-        fields=['date','kind','amount','method','currency','rate','notes']
+        fields=['date','kind','method','amount','currency','rate','notes']
         widgets={'date':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'amount':MoneyInput(),'rate':MoneyInput(),'notes':forms.Textarea(attrs={'rows':2})}
         localized_fields=['amount','rate']
     def __init__(self,*args,**kwargs):
