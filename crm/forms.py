@@ -72,7 +72,7 @@ class PaymentForm(forms.ModelForm):
         self.fields['contract'].label_from_instance=lambda c:f'{c} · {c.customer}'
         apply_reference_defaults(self,kwargs.get('initial'))
     class Media:
-        js=['crm/payment_customer.js']
+        js=['crm/payment_customer.js?v=20261025finance']
 
 
 class CustomerForm(forms.ModelForm):

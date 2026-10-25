@@ -49,25 +49,3 @@ def reschedule(request):
         task.due=due;task.save(update_fields=['due'])
         AuditEvent.objects.create(actor=request.user,object_type='crm.Task',object_id=str(task.pk),action='rescheduled',changes={'due':{'old':str(old),'new':str(due)}})
     return redirect('tasks')
-
-
-@login_required
-@permission_required('crm.view_payment',raise_exception=True)
-def finances(request):
-    qs=Payment.objects.select_related('contract__customer','contract__operator','method').order_by('-date','-pk')
-    for param,lookup in [('customer','contract__customer__name__icontains'),('number','contract__number__icontains'),('operator','contract__operator__name__icontains'),('method','method__name__icontains')]:
-        if request.GET.get(param):qs=qs.filter(**{lookup:request.GET[param]})
-    kind=request.GET.get('kind')
-    if kind in dict(Payment.KINDS):qs=qs.filter(kind=kind)
-    f=DateRange(request.GET)
-    if f.is_valid():
-        if f.cleaned_data['start']:qs=qs.filter(date__gte=f.cleaned_data['start'])
-        if f.cleaned_data['end']:qs=qs.filter(date__lte=f.cleaned_data['end'])
-    rows=list(qs)
-    incoming=outgoing=Decimal('0')
-    for payment in rows:
-        payment.incoming=payment.amount if payment.kind in ('customer','operator_refund') else Decimal('0')
-        payment.outgoing=payment.amount if payment.kind in ('operator','customer_refund') else Decimal('0')
-        incoming+=payment.incoming;outgoing+=payment.outgoing
-    from .models import payment_operation_choices
-    return render(request,'crm/finances.html',{'rows':rows,'count':len(rows),'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'dateform':f,'kinds':payment_operation_choices()})

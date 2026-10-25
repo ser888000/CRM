@@ -18,6 +18,6 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.addEventListener('click',e=>{if(d.open&&!d.contains(e.target)&&!panel.contains(e.target))d.open=false});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&d.open){d.open=false;summary.focus()}});
   window.addEventListener('resize',()=>{if(d.open)position()});
-  window.addEventListener('scroll',e=>{if(d.open&&!panel.contains(e.target))d.open=false},true);
+  window.addEventListener('scroll',e=>{if(d.open&&!panel.contains(e.target)){const box=summary.getBoundingClientRect();if(box.bottom<0||box.top>innerHeight||box.right<0||box.left>innerWidth)d.open=false;else position()}},true);
  });
 });
