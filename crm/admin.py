@@ -319,3 +319,19 @@ class TaskTypeAdmin(AuditedAdmin):
     list_display=['name','description','sort_order','for_contract','is_default']
     list_editable=['sort_order','for_contract','is_default']
     search_fields=['name','description']
+
+
+from .models import LibraryEntry,LibraryAttachment,LegacyImportRun
+@admin.register(LibraryEntry)
+class LibraryEntryAdmin(AuditedAdmin):
+    list_display=['title','parent','sort_order']
+    search_fields=['title','search_text']
+    fields=['title','parent','body','sort_order']
+
+@admin.register(LegacyImportRun)
+class LegacyImportRunAdmin(admin.ModelAdmin):
+    list_display=['created_at','section','source_key','actor']
+    readonly_fields=['source_key','section','content_sha256','source_snapshot','created_at','actor','summary','issues']
+    def has_add_permission(self,request):return False
+    def has_change_permission(self,request,obj=None):return False
+    def has_delete_permission(self,request,obj=None):return False

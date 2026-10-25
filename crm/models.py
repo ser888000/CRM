@@ -388,3 +388,63 @@ class TourvisorBatchRow(models.Model):
     class Meta:
         ordering=['pk']
         constraints=[models.UniqueConstraint(fields=['batch','source_id'],name='unique_batch_online_order')]
+
+class LegacyImportRun(models.Model):
+    source_key=models.CharField('Источник',max_length=100)
+    section=models.CharField('Раздел',max_length=40)
+    content_sha256=models.CharField(max_length=64)
+    source_snapshot=models.CharField('Снимок источника',max_length=64,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True)
+    summary=models.JSONField(default=dict)
+    issues=models.JSONField(default=list)
+    class Meta:
+        verbose_name='Загрузка старой CRM'
+        verbose_name_plural='Загрузки старой CRM'
+        ordering=['-created_at']
+        constraints=[models.UniqueConstraint(fields=['source_key','section','content_sha256'],name='unique_legacy_section_package')]
+
+class LibraryEntry(models.Model):
+    title=models.CharField('Название',max_length=500,blank=True)
+    parent=models.ForeignKey('self',on_delete=models.SET_NULL,null=True,blank=True,related_name='children',verbose_name='Раздел')
+    body=models.TextField('Текст',blank=True)
+    original_data=models.BinaryField(default=bytes,editable=False)
+    original_format=models.CharField(max_length=8,default='text',editable=False)
+    search_text=models.TextField(editable=False,blank=True)
+    sort_order=models.IntegerField('Порядок',default=0)
+    source_key=models.CharField(max_length=100,blank=True,editable=False)
+    source_id=models.PositiveIntegerField(null=True,blank=True,editable=False)
+    source_parent_id=models.IntegerField(null=True,blank=True,editable=False)
+    import_run=models.ForeignKey(LegacyImportRun,on_delete=models.SET_NULL,null=True,blank=True,related_name='library_entries',editable=False)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        verbose_name='Раздел библиотеки'
+        verbose_name_plural='Библиотека'
+        ordering=['sort_order','pk']
+        constraints=[models.UniqueConstraint(fields=['source_key','source_id'],name='unique_legacy_library_entry')]
+    def save(self,*args,**kwargs):
+        self.search_text=normalize_location(self.title+' '+self.body)
+        if kwargs.get('update_fields') is not None:kwargs['update_fields']=set(kwargs['update_fields'])|{'search_text'}
+        super().save(*args,**kwargs)
+    def clean(self):
+        seen={self.pk} if self.pk else set();node=self.parent if self.parent_id else None
+        while node:
+            if node.pk in seen:raise ValidationError({'parent':'Раздел не может быть вложен в себя.'})
+            seen.add(node.pk);node=node.parent
+    def __str__(self):return self.title or 'Без названия'
+
+class LibraryAttachment(models.Model):
+    entry=models.ForeignKey(LibraryEntry,on_delete=models.CASCADE,related_name='attachments')
+    original_name=models.CharField('Имя файла',max_length=250)
+    notes=models.TextField('Примечание',blank=True)
+    data=models.BinaryField(editable=False)
+    byte_size=models.PositiveIntegerField(editable=False)
+    sha256=models.CharField(max_length=64,editable=False)
+    source_id=models.PositiveIntegerField(editable=False)
+    source_meta=models.JSONField(default=dict,editable=False)
+    class Meta:
+        verbose_name='Файл библиотеки'
+        verbose_name_plural='Файлы библиотеки'
+        ordering=['source_id','pk']
+        constraints=[models.UniqueConstraint(fields=['entry','source_id'],name='unique_legacy_library_file')]
+    def __str__(self):return self.original_name
