@@ -18,7 +18,7 @@ class TaskWorkspaceTests(TestCase):
         with patch('crm.task_views.timezone.localdate',return_value=self.today):
             r=self.client.get('/tasks/?period=all')
             self.assertEqual(r.context['count'],3)
-            counts={tab['key']:tab['count'] for tab in r.context['tabs']};self.assertEqual(counts['today'],2);self.assertEqual(counts['overdue'],1)
+            counts={tab['key']:tab['count'] for tab in r.context['tabs']};self.assertEqual(counts['today'],2);self.assertEqual({tab['key']:tab['count'] for tab in r.context['status_tabs']}['overdue'],1)
             r=self.client.get('/tasks/',{'period':'all','q':'test123','customer':'пЕтРоВ','number':'test-1'})
             self.assertEqual([t.pk for t in r.context['rows']],[self.old.pk])
             self.client.get('/finances/')
@@ -108,3 +108,15 @@ class TaskWorkspaceTests(TestCase):
         kind.name='Новое имя';kind.save()
         response=self.client.get('/tasks/?period=all')
         self.assertContains(response,'Новое имя')
+
+    def test_filter_rows_and_status_order(self):
+        response=self.client.get('/tasks/?period=all')
+        self.assertEqual(list(response.context['filters'].fields),['q','customer','operator','employee','start','end'])
+        self.assertEqual([t['label'] for t in response.context['tabs']],['Сегодня','Завтра'])
+        self.assertEqual([t['label'] for t in response.context['status_tabs']],['Все','Запланировано','Выполнено','Просрочено'])
+        with patch('crm.task_views.timezone.localdate',return_value=self.today):
+            response=self.client.get('/tasks/?period=today&status=overdue')
+            self.assertEqual([t.pk for t in response.context['rows']],[self.old.pk])
+            links={tab['key']:tab['url'] for tab in response.context['status_tabs']}
+            response=self.client.get('/tasks/'+links['all'])
+            self.assertEqual({t.pk for t in response.context['rows']},{self.current.pk,self.done.pk})

@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
 from .models import Customer, Operator, Tourist, Contract, Booking, ContractLine, Payment, Task, TaskTemplate, AuditEvent, ContractType, PaymentMethod, DepartureCity, Country, Currency, Meal, Transfer, Insurance, FuelSurcharge
-from .services import create_tasks, copy_contract
+from .services import create_tasks, create_contract_tasks, contract_task_schedule, copy_contract
 from .forms import ContractForm, PaymentForm
 from .templatetags.money import money
 from .widgets import MoneyInput
@@ -93,11 +93,12 @@ class ContractAdmin(AuditedAdmin):
     form=ContractForm
     def get_form(self,request,obj=None,**kwargs):
         attrs={}
-        templates=TaskTemplate.objects.all()
+        templates=TaskType.objects.filter(for_contract=True)
         if obj is not None:
             templates=templates.exclude(task__contract=obj)
         for template in templates:
-            attrs[f'task_due_{template.pk}']=forms.DateField(label=f'Срок: {template.name}',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':template.anchor,'data-task-offset':template.offset,'data-task-id':template.pk}))
+            schedule=contract_task_schedule(obj or Contract(),template)
+            attrs[f'task_due_{template.pk}']=forms.DateField(label=f'Срок: {template.name}',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':schedule['anchor'],'data-task-offset':schedule['offset'],'data-task-id':template.pk}))
         kwargs['form']=type('ContractWithTaskDates',(ContractForm,),attrs)
         return super().get_form(request,obj,**kwargs)
     readonly_fields=['financial_summary','tourvisor_id','tourvisor_time','imported_at','imported_stays','imported_flights','imported_services','imported_comments']
@@ -156,7 +157,7 @@ class ContractAdmin(AuditedAdmin):
         if selected and not request.user.has_perm('crm.add_task'):
             raise PermissionDenied
         dates={t.pk:form.cleaned_data.get(f'task_due_{t.pk}') for t in selected}
-        create_tasks(form.instance,templates=selected,dates=dates)
+        create_contract_tasks(form.instance,selected,dates)
         for fs in formsets:
             for obj in fs.new_objects + fs.changed_objects:
                 instance=obj[0] if isinstance(obj,tuple) else obj
@@ -315,6 +316,6 @@ class PaymentOperationAdmin(AuditedAdmin):
 from .models import TaskType
 @admin.register(TaskType)
 class TaskTypeAdmin(AuditedAdmin):
-    list_display=['name','description','is_default']
-    list_editable=['is_default']
+    list_display=['name','description','for_contract','is_default']
+    list_editable=['for_contract','is_default']
     search_fields=['name','description']

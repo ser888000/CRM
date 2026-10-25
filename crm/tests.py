@@ -53,11 +53,13 @@ class WorkflowTests(TestCase):
         copies=repeat_tasks(t,'month',3)
         self.assertEqual([x.due for x in copies],[date(2027,2,28),date(2027,3,31)])
     def test_admin_contract_creation_generates_selected_tasks(self):
-        template=TaskTemplate.objects.create(name='Проверка',anchor='start',offset=-1)
+        from .models import TaskType
+        kind=TaskType.objects.create(name='Проверка',for_contract=True)
+        template=TaskTemplate.objects.create(name='Проверка',task_type=kind,anchor='start',offset=-1)
         self.client.force_login(self.user)
         response=self.client.post('/admin/crm/contract/add/',{
             'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-21','customer':self.customer.pk,'operator':self.operator.pk,
-            'start':'2026-11-10','end':'2026-11-20','task_templates':[template.pk],f'task_due_{template.pk}':'2026-11-09',
+            'start':'2026-11-10','end':'2026-11-20','task_templates':[kind.pk],f'task_due_{kind.pk}':'2026-11-09',
             'lines-TOTAL_FORMS':'0','lines-INITIAL_FORMS':'0','lines-MIN_NUM_FORMS':'0','lines-MAX_NUM_FORMS':'1000',
             'payments-TOTAL_FORMS':'0','payments-INITIAL_FORMS':'0','payments-MIN_NUM_FORMS':'0','payments-MAX_NUM_FORMS':'1000',
             'bookings-TOTAL_FORMS':'0','bookings-INITIAL_FORMS':'0','bookings-MIN_NUM_FORMS':'0','bookings-MAX_NUM_FORMS':'1000','_save':'Сохранить'})
@@ -65,7 +67,8 @@ class WorkflowTests(TestCase):
         self.assertEqual(Task.objects.get().due,date(2026,11,9))
 
     def test_existing_contract_and_task_edit_pages(self):
-        TaskTemplate.objects.create(name='Дополнительная задача',anchor='start')
+        from .models import TaskType
+        TaskType.objects.create(name='Дополнительная задача',for_contract=True)
         self.client.force_login(self.user)
         response=self.client.get(f'/admin/crm/contract/{self.c.pk}/change/')
         self.assertEqual(response.status_code,200)
@@ -163,12 +166,14 @@ class WorkflowTests(TestCase):
         from .admin import ContractAdmin
         from django.contrib.admin.sites import site
         from django.test import RequestFactory
-        template=TaskTemplate.objects.create(name='Проверка',anchor='start',offset=-1)
+        from .models import TaskType
+        kind=TaskType.objects.create(name='Проверка',for_contract=True)
+        template=TaskTemplate.objects.create(name='Проверка',task_type=kind,anchor='start',offset=-1)
         request=RequestFactory().get('/admin/crm/contract/add/');request.user=self.user
         form_class=ContractAdmin(Contract,site).get_form(request)
-        form=form_class(data={'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'task_templates':[template.pk]})
+        form=form_class(data={'adults':'0','children':'0','infants':'0','source_currency':'RUB','date':'2026-10-22','customer':self.customer.pk,'operator':self.operator.pk,'task_templates':[kind.pk]})
         self.assertFalse(form.is_valid())
-        self.assertIn(f'task_due_{template.pk}',form.errors)
+        self.assertIn(f'task_due_{kind.pk}',form.errors)
 
     def test_contract_forms_offer_exit_without_saving(self):
         self.client.force_login(self.user)

@@ -1,11 +1,11 @@
 from django import forms
-from .models import Contract,TaskTemplate,Payment,Customer,Tourist,DepartureCity,Country,Currency,Meal,Transfer,Insurance,FuelSurcharge
-from .services import task_due
+from .models import Contract,TaskType,Payment,Customer,Tourist,DepartureCity,Country,Currency,Meal,Transfer,Insurance,FuelSurcharge
+from .services import contract_task_schedule
 from .widgets import LocationInput,MoneyInput
 from .reference_defaults import apply_reference_defaults
 
 class ContractForm(forms.ModelForm):
-    task_templates=forms.ModelMultipleChoiceField(label='Создать задачи (снимите ненужные)',queryset=TaskTemplate.objects.all(),required=False,widget=forms.CheckboxSelectMultiple)
+    task_templates=forms.ModelMultipleChoiceField(label='Создать задачи (снимите ненужные)',queryset=TaskType.objects.filter(for_contract=True),required=False,widget=forms.CheckboxSelectMultiple)
     class Meta:
         model=Contract
         fields='__all__'
@@ -15,15 +15,15 @@ class ContractForm(forms.ModelForm):
         self.fields['source_currency']=forms.ChoiceField(label='Валюта предложения',choices=[(c.code,str(c)) for c in Currency.objects.all()],initial='RUB')
         if not self.instance.pk:self.initial.setdefault('source_currency','RUB')
         if self.instance.pk:
-            self.fields['task_templates'].queryset=TaskTemplate.objects.exclude(task__contract=self.instance)
+            self.fields['task_templates'].queryset=TaskType.objects.filter(for_contract=True).exclude(task__contract=self.instance)
             self.fields['task_templates'].initial=[]
         else:
-            self.fields['task_templates'].initial=TaskTemplate.objects.filter(active=True)
+            self.fields['task_templates'].initial=TaskType.objects.filter(for_contract=True)
         apply_reference_defaults(self,kwargs.get('initial'))
-        for template in TaskTemplate.objects.all():
+        for template in self.fields['task_templates'].queryset:
             field=self.fields.get(f'task_due_{template.pk}')
             if field:
-                field.initial=task_due(self.instance,template)
+                field.initial=contract_task_schedule(self.instance,template)['due']
     def clean_departure(self):
         value=self.cleaned_data['departure']
         reference=DepartureCity.match(value) if value else None

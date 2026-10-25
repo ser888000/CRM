@@ -20,8 +20,8 @@ from .reference_defaults import apply_reference_defaults
 from .widgets import LocationInput
 from .services import repeat_tasks
 
-PERIODS=[('today','Сегодня'),('tomorrow','Завтра'),('overdue','Просроченные')]
-STATUSES=[('planned','Запланировано'),('done','Выполнено'),('all','Все')]
+PERIODS=[('today','Сегодня'),('tomorrow','Завтра')]
+STATUSES=[('all','Все'),('planned','Запланировано'),('done','Выполнено'),('overdue','Просрочено')]
 COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
 PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}
 
@@ -47,7 +47,7 @@ class TaskFilters(forms.Form):
     end=forms.DateField(label='по',required=False,widget=forms.DateInput(attrs={'type':'date'}))
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.order_fields(['q','customer','employee','operator','start','end'])
+        self.order_fields(['q','customer','operator','employee','start','end'])
         self.fields['employee'].choices=[('','Все сотрудники'),('shared','Общие задачи')]+[(str(u.pk),u.get_full_name() or u.username) for u in get_user_model().objects.filter(is_active=True)]
     def clean(self):
         data=super().clean()
@@ -65,7 +65,7 @@ def journal(request):
     legacy_status=mode if mode in ('planned','done') else 'all'
     if mode in ('planned','done'):mode='all'
     if mode not in ('today','tomorrow','overdue','custom','all'):mode='today'
-    status=request.GET.get('status',legacy_status)
+    status='overdue' if mode=='overdue' else request.GET.get('status',legacy_status)
     if status not in dict(STATUSES):status='all'
     params=request.GET.copy()
     if mode in ('today','tomorrow'):
@@ -107,8 +107,9 @@ def journal(request):
     period_tasks=[t for t in tasks if in_period(t,mode)]
     for key,label in STATUSES:
         query=request.GET.copy();query.pop('page',None);query['status']=key
-        status_tabs.append({'key':key,'label':label,'count':sum(in_status(t,key) for t in period_tasks),'url':'?'+query.urlencode()})
-    rows=[t for t in period_tasks if mode=='overdue' or in_status(t,status)]
+        if mode=='overdue':query['period']='custom'
+        status_tabs.append({'key':key,'label':label,'count':sum(not t.done and t.due<today for t in tasks) if key=='overdue' else sum(in_status(t,key) for t in period_tasks),'url':'?'+query.urlencode()})
+    rows=[t for t in tasks if not t.done and t.due<today] if status=='overdue' else [t for t in period_tasks if in_status(t,status)]
     sort=request.GET.get('sort','');key=sort.lstrip('-')
     if key in dict(COLUMNS):rows.sort(key=lambda t:t.due if key=='due' else normalize_location(t.column_values[key]),reverse=sort.startswith('-'))
     total=len(rows);page=Paginator(rows,100).get_page(request.GET.get('page'));rows=list(page.object_list)

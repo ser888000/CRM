@@ -1,7 +1,7 @@
 from django import forms
 from .forms import ContractForm,CustomerForm,TouristForm
 from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskTemplate,Currency
-from .services import task_due
+from .services import task_due,contract_task_schedule
 from .widgets import MoneyInput
 from .reference_defaults import apply_reference_defaults
 
@@ -17,7 +17,8 @@ class CardContractForm(ContractForm):
             elif isinstance(field.widget,forms.Textarea):field.widget.attrs['rows']=3
         templates=self.fields['task_templates'].queryset
         for t in templates:
-            self.fields[f'task_due_{t.pk}']=forms.DateField(label=f'Срок: {t.name}',required=False,initial=task_due(self.instance,t),widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':t.anchor,'data-task-offset':t.offset,'data-task-id':t.pk}))
+            schedule=contract_task_schedule(self.instance,t)
+            self.fields[f'task_due_{t.pk}']=forms.DateField(label=f'Срок: {t.name}',required=False,initial=schedule['due'],widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date','data-task-anchor':schedule['anchor'],'data-task-offset':schedule['offset'],'data-task-id':t.pk}))
 
 class CustomerCardForm(CustomerForm):
     class Meta:

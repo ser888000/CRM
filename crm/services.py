@@ -9,6 +9,28 @@ def task_due(contract,template):
     # New tasks should not start overdue when the trip is booked at short notice.
     return max(contract.date,anchor+timedelta(days=template.offset))
 
+def contract_task_schedule(contract,kind):
+    template=kind.tasktemplate_set.order_by('order','pk').first()
+    return {'due':task_due(contract,template) if template else contract.date,
+            'anchor':template.anchor if template else 'created',
+            'offset':template.offset if template else 0,'template':template}
+
+@transaction.atomic
+def create_contract_tasks(contract,kinds,dates):
+    """Manual contract checklist, independent of Tourvisor's template selection."""
+    for kind in kinds:
+        if not kind.for_contract:continue
+        if Task.objects.filter(contract=contract,task_type=kind).exists():continue
+        schedule=contract_task_schedule(contract,kind);template=schedule['template']
+        due=dates.get(kind.pk) or schedule['due']
+        if not due:continue
+        if template:
+            create_tasks(contract,[template],{template.pk:due})
+        else:
+            Task.objects.get_or_create(origin_key=f'contract:{contract.pk}:type:{kind.pk}',defaults={
+                'task_type':kind,'contract':contract,'customer':contract.customer,'title':kind.name,
+                'description':kind.description,'due':due})
+
 @transaction.atomic
 def create_tasks(contract,templates=None,dates=None):
     if templates is None:

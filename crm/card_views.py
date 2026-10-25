@@ -10,7 +10,7 @@ from django.views.decorators.debug import sensitive_post_parameters,sensitive_va
 from django.forms.models import model_to_dict
 from .models import Contract,Payment,Booking,ContractLine,Task,Tourist,AuditEvent
 from .card_forms import CardContractForm,CustomerCardForm,TouristCardForm,CardPaymentForm,BookingCardForm,LineCardForm,TaskCardForm
-from .services import create_tasks,copy_contract
+from .services import create_tasks,create_contract_tasks,copy_contract
 
 GROUPS=[('Основное',['number','date','customer','operator','contract_type','notes']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['flights','transfer','insurance','fuel_surcharge','services']),('Оплата и примечания',['payment_method','operator_due','operator_paid','metrika_id'])]
 
@@ -50,7 +50,7 @@ def contract_card(request,pk=None):
             else:
                 before=model_to_dict(Contract.objects.get(pk=pk)) if pk else {}
                 saved=form.save()
-                create_tasks(saved,selected,{t.pk:form.cleaned_data[f'task_due_{t.pk}'] for t in selected})
+                create_contract_tasks(saved,selected,{t.pk:form.cleaned_data[f'task_due_{t.pk}'] for t in selected})
                 audit(request.user,saved,before,'card_saved')
                 messages.success(request,'Договор сохранён.')
                 return redirect('contract_card',pk=saved.pk)
@@ -141,5 +141,5 @@ def contract_card(request,pk=None):
 
     else:payments=[];tasks=[];lines=[];bookings=[];history=[]
     return render(request,'crm/contract_card.html',{'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
-        'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
+        'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'contract_task_rows':[{'kind':kind,'selected':str(kind.pk) in {str(v) for v in (form['task_templates'].value() or [])},'date':form[f'task_due_{kind.pk}']} for kind in form.fields['task_templates'].queryset], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
         'payments':payments,'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})

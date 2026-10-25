@@ -261,6 +261,7 @@ def payment_operation_choices():
 
 
 class TaskType(DefaultReference):
+    for_contract=models.BooleanField('Задачи по договору',default=False)
     name=models.CharField('Задача',max_length=250,unique=True)
     description=models.TextField('Описание',blank=True)
     class Meta(DefaultReference.Meta):
