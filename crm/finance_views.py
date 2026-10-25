@@ -20,7 +20,7 @@ from .forms import PaymentForm
 from .templatetags.money import money
 
 COLUMNS=[('date','Дата'),('customer','Заказчик'),('number','Договор'),('operator','ТО'),('kind','Операция'),('incoming','Поступление, ₽'),('outgoing','Расход, ₽'),('method','Способ оплаты'),('currency','Валюта ТО'),('rate','Курс'),('notes','Примечание')]
-PARAMS={'customer','number','operator','method','kind','start','end','sort','page'}|{'f_'+key for key,_ in COLUMNS}
+PARAMS={'customer','number','operator','method','kind','start','end','sort','page','period'}|{'f_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
     data=QueryDict(value[:8000]).copy()
@@ -57,14 +57,12 @@ class FinanceFilters(forms.Form):
 @permission_required('crm.view_payment',raise_exception=True)
 @never_cache
 def journal(request):
-    if 'reset' in request.GET:
-        request.session.pop('finance_journal',None);return redirect('finances')
-    if not request.GET and request.session.get('finance_journal'):return redirect(back_url(request.session['finance_journal']))
-    params=request.GET.copy();today=timezone.localdate()
-    if params.get('period')=='today':params['start']=params['end']=today.isoformat()
-    elif params.get('period')=='month':
-        params['start']=today.replace(day=1).isoformat()
-        params['end']=((today.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)).isoformat()
+    from .journal_period import prepare
+    saved=request.session.get('finance_journal','')
+    params=prepare(request.GET,saved)
+    if 'reset' in request.GET or not request.GET and saved:
+        source=params if 'reset' in request.GET else prepare(QueryDict(saved))
+        return redirect(back_url(source.urlencode()))
     filters=FinanceFilters(params);rows=[];labels=dict(payment_operation_choices())
     if filters.is_valid():
         data=filters.cleaned_data
@@ -100,9 +98,9 @@ def journal(request):
     page=Paginator(rows,100).get_page(params.get('page'));pagination=[]
     for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
         if number:
-            query=params.copy();query.pop('period',None);query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
+            query=params.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
     footer=[{'key':key,'text':money(incoming) if key=='incoming' else money(outgoing) if key=='outgoing' else f'ИТОГО: {count}' if key=='date' else ''} for key,_ in COLUMNS]
-    return render(request,'crm/finances.html',{'filters':filters,'dateform':filters,'columns':columns,'table_rows':page.object_list,'rows':[r['payment'] for r in page.object_list],'count':count,'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'footer':footer,'sort':sort,'page':page,'pagination':pagination,'return_query':safe_query(params.urlencode())})
+    return render(request,'crm/finances.html',{'filters':filters,'dateform':filters,'columns':columns,'table_rows':page.object_list,'rows':[r['payment'] for r in page.object_list],'count':count,'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'footer':footer,'sort':sort,'period':params['period'],'start_value':params['start'],'end_value':params['end'],'page':page,'pagination':pagination,'return_query':safe_query(params.urlencode())})
 
 class FinanceEditor(PaymentForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)

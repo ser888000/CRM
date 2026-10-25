@@ -29,7 +29,8 @@ class FinanceWorkspaceTests(TestCase):
         with patch('crm.finance_views.timezone.localdate',return_value=date(2026,11,1)):
             self.assertEqual(self.client.get('/finances/?period=today').context['count'],0)
             self.assertEqual(self.client.get('/finances/?period=month').context['count'],0)
-        self.assertEqual(self.client.get('/finances/?reset=1',follow=True).context['count'],4)
+        response=self.client.get('/finances/?reset=1',follow=True)
+        self.assertEqual(response.context['count'],0);self.assertEqual(response.context['start_value'],'2026-11-01')
         for query in ('start=bad','start=2026-11-01&end=2026-10-01'):
             r=self.client.get('/finances/?'+query);self.assertFalse(r.context['dateform'].is_valid());self.assertEqual(r.context['count'],0)
     def test_totals_include_all_pages(self):

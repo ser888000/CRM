@@ -17,7 +17,8 @@ class ReviewNotesTests(TestCase):
         self.assertEqual(response.context['sort'],'-date');self.assertEqual(response.wsgi_request.GET.getlist('f_country'),['Египет','Турция'])
         self.assertEqual(response.context['count'],1)
         response=self.client.get('/?reset=1',follow=True)
-        self.assertFalse(response.wsgi_request.GET);self.assertFalse(self.client.session.get('contract_journal'))
+        self.assertNotIn('customer',response.wsgi_request.GET);self.assertNotIn('f_country',response.wsgi_request.GET)
+        self.assertEqual(response.context['period'],'today');self.assertTrue(self.client.session.get('contract_journal'))
     def test_journal_state_does_not_cross_users(self):
         self.client.get('/',{'customer':'Missing'})
         self.client.logout();user=get_user_model().objects.create_superuser('other','other@example.test','test-password-456');self.client.force_login(user)

@@ -5,23 +5,27 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import render,redirect
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django.views.decorators.cache import never_cache
 from django import forms
 from .models import Contract, Task, AuditEvent, Payment, Customer, PaymentMethod
 
 @login_required
 @permission_required('crm.view_contract',raise_exception=True)
+@never_cache
 def contracts(request):
     from .contract_journal import journal_context
-    if 'reset' in request.GET:
-        request.session.pop('contract_journal',None)
-        return redirect('contracts')
-    if not request.GET and request.session.get('contract_journal'):
-        return redirect('/?'+request.session['contract_journal'])
-    context=journal_context(request.GET,DateRange)
+    from .journal_period import prepare
+    from django.http import QueryDict
+    saved=request.session.get('contract_journal','')
+    params=prepare(request.GET,saved)
+    if 'reset' in request.GET or not request.GET and saved:
+        source=params if 'reset' in request.GET else prepare(QueryDict(saved))
+        return redirect('/?'+source.urlencode())
+    context=journal_context(params,DateRange)
     if context['dateform'].is_valid():
         from .contract_journal import COLUMNS
-        allowed={'customer','email','phone','number','operator','country','start','end','sort'}|{'f_'+key for key,_ in COLUMNS}
-        saved=request.GET.copy()
+        allowed={'customer','email','phone','number','operator','country','start','end','sort','period'}|{'f_'+key for key,_ in COLUMNS}
+        saved=params.copy()
         for key in list(saved):
             if key not in allowed:del saved[key]
         saved['start']=context['start_value'];saved['end']=context['end_value']
@@ -33,6 +37,10 @@ def contracts(request):
 class DateRange(forms.Form):
     start=forms.DateField(required=False)
     end=forms.DateField(required=False)
+    def clean(self):
+        data=super().clean()
+        if data.get('start') and data.get('end') and data['start']>data['end']:self.add_error('end','Окончание периода раньше начала.')
+        return data
 
 @login_required
 @permission_required('crm.change_task',raise_exception=True)

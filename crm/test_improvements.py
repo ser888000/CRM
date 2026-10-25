@@ -27,13 +27,13 @@ class JournalImprovementTests(TestCase):
             ContractLine.objects.create(contract=c,description='Тур',amount=[300,100,200][i]);self.cards.append(c)
     def test_unicode_contact_search_and_layout(self):
         for data in [{'customer':'пЕтРоВ'},{'email':'test@EXAMPLE'},{'phone':'89991112233'}]:
-            with self.subTest(data=data):self.assertEqual(self.client.get('/',data).context['count'],3)
+            with self.subTest(data=data):self.assertEqual(self.client.get('/',{**data,'start':'2026-10-24','end':'2026-10-24'}).context['count'],3)
         r=self.client.get('/',follow=True)
-        for label in ['Способ оплаты','Примечание','Город вылета','Дата оплаты ТО','Взр','Дети','Месяц (текущий)']:self.assertContains(r,label)
+        for label in ['Способ оплаты','Примечание','Город вылета','Дата оплаты ТО','Взр','Дети','Завтра']:self.assertContains(r,label)
         for name in ['number','operator','country']:self.assertNotContains(r,f'name="{name}"')
         self.assertNotContains(r,'документов · Сумма')
     def test_multi_column_filters_sort_and_totals(self):
-        r=self.client.get('/',{'f_country':['Египет','Турция'],'f_children':['0','2'],'sort':'amount'})
+        r=self.client.get('/',{'f_country':['Египет','Турция'],'f_children':['0','2'],'sort':'amount','start':'2026-10-24','end':'2026-10-24'})
         self.assertEqual([c.pk for c in r.context['rows']],[self.cards[2].pk,self.cards[0].pk])
         self.assertEqual(r.context['count'],2);self.assertEqual(r.context['totals']['amount'],Decimal('500'))
         self.assertContains(r,'ИТОГО: 2')

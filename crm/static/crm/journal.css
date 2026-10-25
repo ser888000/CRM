@@ -4,3 +4,5 @@
 .column-options.floating-filter{position:fixed;z-index:100;box-sizing:border-box;margin:0;color:var(--ink);font-size:13px}
 
 #contracts[data-freeze-first] .frozen-column{position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 0 var(--line)}#contracts[data-freeze-first] th.frozen-column{z-index:3;background:#fafbf8}#contracts[data-freeze-first] tbody tr:hover .frozen-column{background:#fafcf9}#contracts[data-freeze-first] tfoot .frozen-column{background:#fafbf8}
+
+.journal-dates{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:20px 0}.journal-dates label{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted)}.journal-dates input{width:155px}.journal-dates .active{background:var(--accent);color:#fff;border-color:var(--accent)}.finance-search .finance-filter-actions{display:flex;align-items:end;gap:10px}.finance-filters .journal-dates{margin-bottom:0}

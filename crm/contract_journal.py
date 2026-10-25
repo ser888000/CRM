@@ -11,18 +11,15 @@ MONEY={'amount','paid','debt','cost','profit'}
 DATES={'date','start','end','operator_due','operator_paid'}
 
 def journal_context(params,dateform):
-    start=params.get('start','');end=params.get('end','')
-    today=timezone.localdate()
-    if params.get('period')=='today':start=end=today.isoformat()
-    elif params.get('period')=='month':
-        start=today.replace(day=1).isoformat()
-        end=((today.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)).isoformat()
-    data=params.copy();data['start']=start;data['end']=end
-    dateform=dateform(data)
+    from .journal_period import prepare
+    params=prepare(params)
+    start=params['start'];end=params['end']
+    dateform=dateform(params)
     qs=Contract.objects.select_related('customer','operator','payment_method').prefetch_related('lines','payments').order_by('-date','-pk')
     if dateform.is_valid():
         if dateform.cleaned_data['start']:qs=qs.filter(date__gte=dateform.cleaned_data['start'])
         if dateform.cleaned_data['end']:qs=qs.filter(date__lte=dateform.cleaned_data['end'])
+    else:qs=qs.none()
     rows=[]
     for contract in qs:
         customer=contract.customer
@@ -51,4 +48,4 @@ def journal_context(params,dateform):
         present.sort(key=lambda r:normalize_location(r['values'][key]) if isinstance(r['values'][key],str) else r['values'][key],reverse=sort.startswith('-'));rows=present+missing
     totals={key:sum((r['values'][key] for r in rows),Decimal('0')) for key in MONEY}
     footer=[{'key':key,'text':money(totals[key]) if key in MONEY else f'ИТОГО: {len(rows)}' if key=='number' else ''} for key,_ in COLUMNS]
-    return {'rows':[r['contract'] for r in rows],'table_rows':rows,'columns':columns,'footer':footer,'totals':totals,'count':len(rows),'dateform':dateform,'start_value':start,'end_value':end,'sort':sort}
+    return {'rows':[r['contract'] for r in rows],'table_rows':rows,'columns':columns,'footer':footer,'totals':totals,'count':len(rows),'dateform':dateform,'start_value':start,'end_value':end,'sort':sort,'period':params['period']}
