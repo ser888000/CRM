@@ -1,0 +1,7 @@
+[Unit]
+Description=Watch for CRM administrator update requests
+[Path]
+PathExists=/var/lib/aborigen-crm/update-request.json
+Unit=aborigen-crm-update.service
+[Install]
+WantedBy=multi-user.target

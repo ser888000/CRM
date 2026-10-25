@@ -47,5 +47,6 @@ def journal_context(params,dateform):
         present=[r for r in rows if r['values'][key] is not None];missing=[r for r in rows if r['values'][key] is None]
         present.sort(key=lambda r:normalize_location(r['values'][key]) if isinstance(r['values'][key],str) else r['values'][key],reverse=sort.startswith('-'));rows=present+missing
     totals={key:sum((r['values'][key] for r in rows),Decimal('0')) for key in MONEY}
-    footer=[{'key':key,'text':money(totals[key]) if key in MONEY else f'ИТОГО: {len(rows)}' if key=='number' else ''} for key,_ in COLUMNS]
+    totals.update({key:sum(r['values'][key] or 0 for r in rows) for key in ('adults','children')})
+    footer=[{'key':key,'text':money(totals[key]) if key in MONEY else str(totals[key]) if key in ('adults','children') else f'ИТОГО: {len(rows)}' if key=='number' else ''} for key,_ in COLUMNS]
     return {'rows':[r['contract'] for r in rows],'table_rows':rows,'columns':columns,'footer':footer,'totals':totals,'count':len(rows),'dateform':dateform,'start_value':start,'end_value':end,'sort':sort,'period':params['period']}

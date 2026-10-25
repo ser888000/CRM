@@ -38,7 +38,14 @@ chown -R aborigen-crm:aborigen-crm /var/lib/aborigen-crm
 install -m 644 deploy/aborigen-crm.service /etc/systemd/system/aborigen-crm.service
 install -m 644 deploy/aborigen-crm-cleanup.service /etc/systemd/system/aborigen-crm-cleanup.service
 install -m 644 deploy/aborigen-crm-cleanup.timer /etc/systemd/system/aborigen-crm-cleanup.timer
+install -d -m 750 -o root -g aborigen-crm /var/lib/aborigen-crm-updater
+install -d -m 755 -o root -g root /usr/local/libexec
+install -m 755 -o root -g root deploy/run-update.py /usr/local/libexec/aborigen-crm-update.py
+install -m 644 deploy/aborigen-crm-update.path /etc/systemd/system/aborigen-crm-update.path
+install -m 644 deploy/aborigen-crm-update.service /etc/systemd/system/aborigen-crm-update.service
 systemctl daemon-reload
+systemctl enable --now aborigen-crm-update.path
+install -m 640 -o root -g aborigen-crm /dev/null /var/lib/aborigen-crm-updater/installed
 systemctl enable --now aborigen-crm-cleanup.timer
 systemctl enable --now aborigen-crm
 systemctl restart aborigen-crm

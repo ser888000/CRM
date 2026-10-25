@@ -50,3 +50,8 @@
 ## Очистка предпросмотров группового импорта
 
 install-service.sh устанавливает и включает aborigen-crm-cleanup.timer (ежечасно с задержкой до пяти минут). Его oneshot-служба запускает `manage.py purge_tourvisor_batches` от aborigen-crm с существующим EnvironmentFile и доступом только к /var/lib/aborigen-crm для записи. Истёкшие исходные снимки очищаются, пакеты старше семи дней удаляются; договоры и их финансы не удаляются. Проверка: `systemctl status aborigen-crm-cleanup.timer --no-pager`.
+
+
+## Обновление из браузера
+
+Штатный install-service.sh также устанавливает отдельный root worker и aborigen-crm-update.path. После одной ручной установки новые версии можно ставить через «Справочники и управление → Обновление CRM». Подробности, границы проверки и диагностика: [WEB_UPDATES.md](../docs/WEB_UPDATES.md). Веб-приложение root-права не получает.

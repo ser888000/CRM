@@ -1,0 +1,11 @@
+[Unit]
+Description=Install published Aborigen CRM update
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/aborigen-crm
+ExecStart=/usr/bin/python3 /usr/local/libexec/aborigen-crm-update.py
+UMask=0027
+TimeoutStartSec=60min
