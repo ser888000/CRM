@@ -44,7 +44,7 @@ class FollowupTests(TestCase):
         values=self.client.get('/tasks/choices/customers/',{'q':'ивАН'}).json()['choices']
         self.assertIn('02.01.1980',values[0]['label']);self.assertIn('+79990000000',values[0]['label'])
         page=self.client.get('/tasks/?period=all')
-        self.assertContains(page,'data-reference-open=');self.assertContains(page,'target="_blank"');self.assertContains(page,'Согласовано')
+        self.assertContains(page,'data-reference-open=');self.assertContains(page,f'href="/contracts/{self.contract.pk}/?tab=tasks">');self.assertContains(page,'Согласовано')
         page=self.client.get(f'/contracts/{self.contract.pk}/?tab=tasks')
         self.assertContains(page,'href="#contract-new-task"');self.assertContains(page,'id="contract-new-task"')
     def test_import_and_upgrade_split_results_without_overwriting_manual_description(self):

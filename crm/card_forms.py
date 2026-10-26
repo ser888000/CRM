@@ -53,7 +53,7 @@ class BookingCardForm(forms.ModelForm):
 
 class LineCardForm(forms.ModelForm):
     class Media:
-        js=['crm/remote_choices_v2.js']
+        js=['crm/remote_choices_v3.js']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         apply_reference_defaults(self,kwargs.get('initial'))

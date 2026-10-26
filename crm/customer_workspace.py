@@ -7,14 +7,14 @@ from django.contrib.auth.decorators import login_required,permission_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count,Q,Sum
 from django.forms.models import model_to_dict
 from django.http import QueryDict
 from django.shortcuts import render,redirect,get_object_or_404
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
-from .models import Customer,Contract,normalize_location
+from .models import Customer,Contract,Task,Payment,normalize_location
 from .card_forms import CustomerCardForm
 from .customer_matching import contacts,phone_key,customer_matches
 from .card_views import audit
@@ -114,7 +114,27 @@ def editor(request,pk=None):
     if pk:
         if customer.kind=='person':similar=[c for c in customer_matches(model_to_dict(customer))[1] if c.pk!=customer.pk]
         elif customer.inn:similar=list(Customer.objects.filter(kind='company',inn=customer.inn).exclude(pk=customer.pk))
-    return render(request,'crm/customer_editor.html',{'form':form,'customer':customer,'is_new':not pk,'editable':editable,'back_url':back_url(query),'return_query':safe_query(query),'visible_fields':[f for f in form if not f.is_hidden],'contracts':contracts[:100],'contract_count':contracts.count(),'similar':similar[:10]})
+    task_query=Task.objects.filter(Q(customer=customer)|Q(customer__isnull=True,contract__customer=customer)).select_related('contract','employee','task_type').order_by('done','due','pk') if pk and request.user.has_perm('crm.view_task') else Task.objects.none()
+    payment_query=Payment.objects.filter(Q(contract__customer=customer)|Q(legacy_payer=customer)).select_related('contract','method','legacy_payer').order_by('-date','-pk') if pk and request.user.has_perm('crm.view_payment') else Payment.objects.none()
+    task_page=Paginator(task_query,100).get_page(request.GET.get('task_page'))
+    finance_page=Paginator(payment_query,100).get_page(request.GET.get('finance_page'))
+    finance_page.object_list=list(finance_page.object_list)
+    if finance_page.object_list:
+        from .models import payment_operation_choices
+        labels=dict(payment_operation_choices())
+        for payment in finance_page.object_list:
+            payment.display_kind=labels.get(payment.kind,payment.kind)
+            payment.incoming=payment.amount if payment.kind in ('customer','operator_refund') else 0
+            payment.outgoing=payment.amount if payment.kind in ('operator','customer_refund') else 0
+    totals=payment_query.aggregate(incoming=Sum('amount',filter=Q(kind__in=['customer','operator_refund'])),outgoing=Sum('amount',filter=Q(kind__in=['operator','customer_refund'])))
+    def page_links(page,key,anchor):
+        result=[]
+        for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
+            if number:
+                query=request.GET.copy();query[key]=number
+                result.append({'label':label,'url':'?'+query.urlencode()+'#'+anchor})
+        return result
+    return render(request,'crm/customer_editor.html',{'form':form,'customer':customer,'is_new':not pk,'editable':editable,'back_url':back_url(query),'return_query':safe_query(query),'visible_fields':[f for f in form if not f.is_hidden],'contracts':contracts[:100],'contract_count':contracts.count(),'similar':similar[:10],'customer_tasks':task_page,'customer_payments':finance_page,'customer_payment_totals':totals,'task_links':page_links(task_page,'task_page','customer-tasks'),'finance_links':page_links(finance_page,'finance_page','customer-finances')})
 
 @login_required
 @permission_required('crm.view_customer',raise_exception=True)

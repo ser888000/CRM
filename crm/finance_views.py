@@ -124,8 +124,11 @@ class FinanceEditor(PaymentForm):
         super().__init__(*args,**kwargs)
         self.fields['contract'].widget.attrs['data-contracts-url']='/finances/contracts/'
         if self.instance.pk:self.fields['version'].initial=version(self.instance)
+        from .editor_choices import configure
+        configure(self,'/finances/customers/','/finances/contracts/')
     class Media:
-        js=['crm/payment_customer_v2.js']
+        extend=False
+        js=['crm/remote_choices_v3.js']
 
 @login_required
 @never_cache
@@ -161,8 +164,13 @@ def editor(request,pk=None):
 @never_cache
 def contracts_for_customer(request):
     if not request.user.has_perm('crm.add_payment') and not request.user.has_perm('crm.change_payment'):raise PermissionDenied
-    qs=Contract.objects.select_related('customer').order_by('-date','-pk');customer=request.GET.get('customer','')
-    if customer:
-        if not customer.isdecimal() or len(customer)>18:return JsonResponse({'contracts':[]})
-        qs=qs.filter(customer_id=customer)
-    return JsonResponse({'contracts':[{'id':c.pk,'label':f'{c} · {c.customer}'} for c in qs]})
+    from .editor_choices import contracts
+    values=contracts(request.GET.get('q',''),request.GET.get('customer',''))
+    return JsonResponse({'contracts':values,'choices':values})
+
+@login_required
+@permission_required('crm.view_payment',raise_exception=True)
+@never_cache
+def customers_for_editor(request):
+    from .editor_choices import customers
+    return JsonResponse({'choices':customers(request.GET.get('q',''))})

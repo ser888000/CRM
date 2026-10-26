@@ -165,7 +165,7 @@ class TaskEditorForm(forms.ModelForm):
     customer_email=forms.CharField(label='email заказчика',required=False,disabled=True)
     customer_phone=forms.CharField(label='Телефон заказчика',required=False,disabled=True)
     class Media:
-        js=['crm/remote_choices_v2.js','crm/task_editor_v2.js']
+        js=['crm/remote_choices_v3.js','crm/task_editor_v2.js']
 
     version=forms.CharField(required=False,widget=forms.HiddenInput)
     repeat=forms.ChoiceField(label='Повтор',required=False,choices=[('','Без повтора'),('day','Каждый день'),('week','Каждую неделю'),('month','Каждый месяц'),('year','Каждый год')])
@@ -175,6 +175,7 @@ class TaskEditorForm(forms.ModelForm):
         fields=['task_type','title','description','result','due','customer','contract','operator','booking_number','employee','done']
         widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':4}),'result':forms.Textarea(attrs={'rows':4})}
     def __init__(self,*args,**kwargs):
+        user=kwargs.pop('user',None)
         super().__init__(*args,**kwargs)
         self.fields['task_type'].label='Задача'
         self.fields['task_type'].required=not (self.is_bound and self.data.get('title'))
@@ -195,7 +196,7 @@ class TaskEditorForm(forms.ModelForm):
             self.fields['customer'].disabled=True
         if self.instance.pk:
             self.fields['version'].initial=version(self.instance);self.fields.pop('repeat');self.fields.pop('occurrences')
-        else:self.fields['due'].initial=timezone.localdate()
+        else:self.initial['due']=timezone.localdate()
         apply_reference_defaults(self,kwargs.get('initial'))
         if not self.initial.get('title') and self.initial.get('task_type'):
             default_type=self.fields['task_type'].queryset.filter(pk=self.initial['task_type']).first()
@@ -204,13 +205,8 @@ class TaskEditorForm(forms.ModelForm):
         customer=self.instance.customer or (self.instance.contract.customer if self.instance.contract_id else None)
         if customer:
             self.initial.update(customer_email=customer.main_email or customer.emails,customer_phone=customer.main_phone or customer.phones)
-        for name,endpoint in [('customer','customers'),('contract','contracts')]:
-            field=self.fields[name]
-            selected=getattr(self.instance,name+'_id',None) or self.initial.get(name) or field.initial
-            if self.is_bound:selected=self.data.get(name)
-            field.widget.choices=[('','---------')]+[(obj.pk,field.label_from_instance(obj)) for obj in field.queryset.filter(pk=selected)] if selected and str(selected).isdigit() else [('','---------')]
-            field.widget.attrs['data-remote-choices']='/tasks/choices/'+endpoint+'/'
-            field.widget.attrs['data-search-label']='Найти заказчика' if name=='customer' else 'Найти договор'
+        from .editor_choices import configure
+        configure(self,'/tasks/choices/customers/','/tasks/choices/contracts/',include_amount=user is None or user.has_perm('crm.view_contract') or user.has_perm('crm.view_payment'))
 
     def clean(self):
         data=super().clean()
@@ -236,7 +232,7 @@ def editor(request,pk=None):
     if not request.user.has_perms(['crm.view_task','crm.change_task' if pk else 'crm.add_task']):raise PermissionDenied
     task=get_object_or_404(Task.objects.select_for_update(),pk=pk) if pk else Task()
     before=model_to_dict(task);current_version=version(task) if pk else ''
-    form=TaskEditorForm(request.POST if request.method=='POST' else None,instance=task)
+    form=TaskEditorForm(request.POST if request.method=='POST' else None,instance=task,user=request.user)
     query=request.POST.get('return_query','') if request.method=='POST' else request.GET.get('return_query','')
     if request.method=='POST' and form.is_valid():
         if pk and form.cleaned_data['version']!=current_version:form.add_error(None,'Задача изменена в другом окне. Обновите страницу и проверьте данные.')
@@ -252,7 +248,7 @@ def editor(request,pk=None):
                 messages.success(request,f'Создано задач: {1+len(copies)}.' if not pk else 'Задача сохранена.')
                 return redirect(back_url(query))
             except (OverflowError,ValueError):form.add_error('due','Повторы выходят за допустимые даты. Уменьшите количество или измените срок.')
-    return render(request,'crm/task_editor.html',{'form':form,'task':task,'is_new':not pk,'back_url':back_url(query),'return_query':safe_query(query),'display_customer':task.customer or (task.contract.customer if task.contract_id else None),'visible_fields':[field for field in form if not field.is_hidden]})
+    return render(request,'crm/task_editor.html',{'form':form,'task':task,'is_new':not pk,'back_url':back_url(query),'return_query':safe_query(query),'display_customer':task.customer or (task.contract.customer if task.contract_id else None),'task_field_groups':[[form[name] for name in names if name in form.fields] for names in [('task_type','due','employee'),('description','result','done'),('customer','contract'),('operator','booking_number'),('repeat','occurrences')] if any(name in form.fields for name in names)],'visible_fields':[field for field in form if not field.is_hidden]})
 
 @login_required
 @permission_required(('crm.view_task','crm.change_task'),raise_exception=True)
@@ -289,17 +285,9 @@ def actions(request):
 @never_cache
 def choices(request,kind):
     from django.http import JsonResponse
-    query=normalize_location(request.GET.get('q','')[:250]);result=[]
-    if len(query)<2:return JsonResponse({'choices':[]})
-    if kind=='customers':
-        rows=Customer.objects.filter(is_hidden=False).order_by('name','pk').values_list('pk','name','birthday','main_phone','phones','main_email')
-        for pk,name,birthday,phone,phones,email in rows:
-            if query in normalize_location(name+' '+phone+' '+phones+' '+email):result.append({'id':pk,'label':' · '.join(filter(None,[name,birthday.strftime('%d.%m.%Y') if birthday else None,phone or phones]))})
-            if len(result)==30:break
-    else:
-        for pk,number,name in Contract.objects.order_by('-date','-pk').values_list('pk','number','customer__name'):
-            if query in normalize_location(number+' '+name):result.append({'id':pk,'label':number+' · '+name})
-            if len(result)==30:break
+    from .editor_choices import customers,contracts
+    query=request.GET.get('q','')
+    result=customers(query) if kind=='customers' else contracts(query,request.GET.get('customer',''),include_amount=request.user.has_perm('crm.view_contract') or request.user.has_perm('crm.view_payment')) if kind=='contracts' else []
     return JsonResponse({'choices':result})
 
 @login_required
