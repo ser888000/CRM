@@ -176,8 +176,8 @@ def prepare_history(data):
         day=date(row.get('DATA_CONTACT'))
         if not day:raise HistoryImportError(f'Не указана дата задачи: {key}')
         title=string(i['VID_CONTACT'].get(row.get('ID_VID_CONTACT'),{}).get('DISCRIPTION_VID_CONTCT')) or 'Задача старой CRM'
-        description='\n\n'.join(filter(None,[plain(row.get('PRIMECHANIE')),('Результат: '+plain(row.get('REZULTAT_CONTACT'))) if row.get('REZULTAT_CONTACT') else '']))
-        values={'title':title,'description':description,'due':day,'done':row['ID_PRIZNAK_CONTACT']==2}
+        description=plain(row.get('PRIMECHANIE'))
+        values={'title':title,'description':description,'result':plain(row.get('REZULTAT_CONTACT')),'due':day,'done':row['ID_PRIZNAK_CONTACT']==2}
         targets['tasks'].append((key,build(m.Task,values,'LIST_CONTACT_COMPANY',key)))
     from collections import Counter
     report={'issue_counts':dict(Counter(v['kind'] for v in issues)),'counts':{kind:len(rows) for kind,rows in targets.items()},'restored_customers':sum(bool(r.get('TRASH')) for r in i['COMPANY'].values()),'issues':len(issues),'deferred_payments':[v['source_id'] for v in issues if v['kind']=='unallocated_payment_deferred'],'zero_payments':sum(v['kind']=='zero_payment_archived' for v in issues),'totals':{'contracts':str(sum((v.legacy_amount_adjustment+line_totals[key] for key,v in targets['contracts']),Decimal('0'))),'lines':str(sum(line_totals.values(),Decimal('0'))),'operator_paid':str(sum((v.opening_operator_paid for _,v in targets['contracts']),Decimal('0'))),'customer_net':str(sum((v.amount*(-1 if v.kind=='customer_refund' else 1) for _,v in targets['payments']),Decimal('0')))}}

@@ -23,7 +23,7 @@ from .services import repeat_tasks
 
 PERIODS=[('today','Сегодня'),('tomorrow','Завтра')]
 STATUSES=[('all','Все'),('planned','Запланировано'),('done','Выполнено'),('overdue','Просрочено')]
-COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('contacts','Телефон / Емайл'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
+COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('contacts','Телефон / email'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
 PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
@@ -85,7 +85,7 @@ def journal(request):
     # Fetch each related record once, rather than duplicating it for every historical task.
     from .models import Booking
     fields=['id','title','due','done','booking_number','task_type_id','customer_id','contract_id','operator_id','employee_id']
-    if params.get('q'):fields.append('description')
+    if params.get('q'):fields.extend(['description','result'])
     fast_scope=mode in ('today','tomorrow') and not search_all_dates and not any(params.getlist('f_'+key) for key,_ in COLUMNS) and not request.GET.get('choice_column')
     queryset=Task.objects.all()
     if fast_scope:queryset=queryset.filter(Q(done=False)|Q(due__in=[today,today+timedelta(days=1)]))
@@ -108,7 +108,7 @@ def journal(request):
         def matches(t):
             customer=t.customer or (t.contract.customer if t.contract_id else None)
             values={'customer':str(customer or ''),'operator':str(t.tour_operator or '')}
-            if data.get('q'):values['q']=' '.join([t.display_title,t.description,t.booking_number,*[n for n,_ in t.booking_entries]])
+            if data.get('q'):values['q']=' '.join([t.display_title,t.description,t.result,t.booking_number,*[n for n,_ in t.booking_entries]])
             if any(normalize_location(data[k]) not in normalize_location(values[k]) for k in values if data.get(k)):return False
             if data['employee']=='shared' and t.employee_id:return False
             if data['employee'] not in ('','shared') and str(t.employee_id)!=data['employee']:return False
@@ -156,24 +156,24 @@ def journal(request):
     for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
         if number:
             query=request.GET.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
-    descriptions=dict(Task.objects.filter(pk__in=[t.pk for t in rows]).values_list('pk','description'))
+    descriptions={pk:(description,result) for pk,description,result in Task.objects.filter(pk__in=[t.pk for t in rows]).values_list('pk','description','result')}
     for t in rows:
-        t.description=descriptions[t.pk];t.overdue=not t.done and t.due<today
+        t.description,t.result=descriptions[t.pk];t.overdue=not t.done and t.due<today
     return render(request,'crm/tasks.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/tasks/',params),'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
 
 class TaskEditorForm(forms.ModelForm):
-    customer_email=forms.CharField(label='Емайл заказчика',required=False,disabled=True)
+    customer_email=forms.CharField(label='email заказчика',required=False,disabled=True)
     customer_phone=forms.CharField(label='Телефон заказчика',required=False,disabled=True)
     class Media:
-        js=['crm/remote_choices.js','crm/task_editor.js']
+        js=['crm/remote_choices_v2.js','crm/task_editor_v2.js']
 
     version=forms.CharField(required=False,widget=forms.HiddenInput)
     repeat=forms.ChoiceField(label='Повтор',required=False,choices=[('','Без повтора'),('day','Каждый день'),('week','Каждую неделю'),('month','Каждый месяц'),('year','Каждый год')])
     occurrences=forms.IntegerField(label='Всего задач, включая первую',min_value=1,max_value=366,initial=1,required=False,help_text='Все повторы создаются сразу, максимум 366.')
     class Meta:
         model=Task
-        fields=['task_type','title','description','due','customer','contract','operator','booking_number','employee','done']
-        widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':3})}
+        fields=['task_type','title','description','result','due','customer','contract','operator','booking_number','employee','done']
+        widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':4}),'result':forms.Textarea(attrs={'rows':4})}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['task_type'].label='Задача'
@@ -186,6 +186,7 @@ class TaskEditorForm(forms.ModelForm):
         self.fields['contract'].queryset=Contract.objects.select_related('customer').order_by('-date','-pk')
         self.fields['contract'].label_from_instance=lambda c:f'{c} · {c.customer}'
         self.fields['customer'].label='Заказчик (необязательно)'
+        self.fields['customer'].label_from_instance=lambda c:' · '.join(filter(None,[c.name,c.birthday.strftime('%d.%m.%Y') if c.birthday else None,c.main_phone or c.phones]))
         self.fields['contract'].label='Договор (необязательно)'
         self.fields['operator'].help_text='Для задачи без договора. В задаче по договору ТО определяется автоматически.'
         if self.instance.origin_key:
@@ -199,7 +200,7 @@ class TaskEditorForm(forms.ModelForm):
         if not self.initial.get('title') and self.initial.get('task_type'):
             default_type=self.fields['task_type'].queryset.filter(pk=self.initial['task_type']).first()
             if default_type:self.initial['title']=default_type.name
-        self.order_fields(['title','description','due','customer','customer_email','customer_phone','contract','operator','booking_number','employee','done','repeat','occurrences','version','task_type'])
+        self.order_fields(['task_type','due','employee','description','result','done','customer','contract','customer_email','customer_phone','operator','booking_number','repeat','occurrences','title','version'])
         customer=self.instance.customer or (self.instance.contract.customer if self.instance.contract_id else None)
         if customer:
             self.initial.update(customer_email=customer.main_email or customer.emails,customer_phone=customer.main_phone or customer.phones)
@@ -291,9 +292,9 @@ def choices(request,kind):
     query=normalize_location(request.GET.get('q','')[:250]);result=[]
     if len(query)<2:return JsonResponse({'choices':[]})
     if kind=='customers':
-        rows=Customer.objects.filter(is_hidden=False).values_list('pk','name','main_phone','main_email')
-        for pk,name,phone,email in rows:
-            if query in normalize_location(name+' '+phone+' '+email):result.append({'id':pk,'label':name})
+        rows=Customer.objects.filter(is_hidden=False).order_by('name','pk').values_list('pk','name','birthday','main_phone','phones','main_email')
+        for pk,name,birthday,phone,phones,email in rows:
+            if query in normalize_location(name+' '+phone+' '+phones+' '+email):result.append({'id':pk,'label':' · '.join(filter(None,[name,birthday.strftime('%d.%m.%Y') if birthday else None,phone or phones]))})
             if len(result)==30:break
     else:
         for pk,number,name in Contract.objects.order_by('-date','-pk').values_list('pk','number','customer__name'):

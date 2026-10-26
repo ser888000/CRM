@@ -311,6 +311,7 @@ class Task(models.Model):
     task_type=models.ForeignKey(TaskType,on_delete=models.SET_NULL,null=True,blank=True,verbose_name='Тип задачи')
     title = models.CharField('Тип / название задачи',max_length=250)
     description = models.TextField('Описание',blank=True)
+    result = models.TextField('Результат',blank=True)
     due = models.DateField('Срок')
     done = models.BooleanField('Выполнено',default=False)
     customer = models.ForeignKey(Customer,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Заказчик')

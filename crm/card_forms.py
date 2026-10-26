@@ -53,7 +53,7 @@ class BookingCardForm(forms.ModelForm):
 
 class LineCardForm(forms.ModelForm):
     class Media:
-        js=['crm/remote_choices.js']
+        js=['crm/remote_choices_v2.js']
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         apply_reference_defaults(self,kwargs.get('initial'))
@@ -89,5 +89,5 @@ class TaskCardForm(forms.ModelForm):
         return data
     class Meta:
         model=Task
-        fields=['task_type','description','due','employee','done']
-        widgets={'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':2})}
+        fields=['task_type','due','done','description','result','employee']
+        widgets={'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':4}),'result':forms.Textarea(attrs={'rows':4})}

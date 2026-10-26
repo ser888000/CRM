@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded',()=>{
- const customer=document.querySelector('#id_customer'),link=document.querySelector('#task-customer-link');let controller;
+ const customer=document.querySelector('#id_customer');let controller;
  customer?.addEventListener('change',async()=>{
-  controller?.abort();for(const name of ['email','phone'])document.querySelector('#id_customer_'+name).value='';link.hidden=true;if(!customer.value)return;
-  controller=new AbortController();try{const response=await fetch('/tasks/customer/'+encodeURIComponent(customer.value)+'/',{signal:controller.signal});if(!response.ok)return;const data=await response.json();for(const name of ['email','phone'])document.querySelector('#id_customer_'+name).value=data[name];link.href=data.url;link.hidden=false;}catch(error){}
+  controller?.abort();for(const name of ['email','phone'])document.querySelector('#id_customer_'+name).value='';if(!customer.value)return;
+  controller=new AbortController();try{const response=await fetch('/tasks/customer/'+encodeURIComponent(customer.value)+'/',{signal:controller.signal});if(!response.ok)return;const data=await response.json();for(const name of ['email','phone'])document.querySelector('#id_customer_'+name).value=data[name];}catch(error){}
  });
  const booking=document.querySelector('#task-booking-links');let timer,bookingController;
  async function refreshBooking(){

@@ -30,7 +30,7 @@ def audit(user,obj,before,action):
 def contract_card(request,pk=None):
     require(request.user,'crm.view_contract' if pk else 'crm.add_contract')
     contract=get_object_or_404(Contract.objects.select_related('customer','operator').select_for_update(),pk=pk) if pk else Contract()
-    action=request.POST.get('action') if request.method=='POST' else ''
+    action=(request.POST.get('delete_action') or request.POST.get('action')) if request.method=='POST' else ''
     form=CardContractForm(request.POST if action=='contract' else None,instance=contract)
     customer_form=CustomerCardForm(request.POST if action=='customer' else None,instance=contract.customer if pk else None,prefix='customer')
     payment_form=CardPaymentForm(prefix='payment-new')
@@ -61,6 +61,22 @@ def contract_card(request,pk=None):
             cloned=copy_contract(contract);audit(request.user,cloned,{},'copied')
             messages.success(request,'Создана копия без оплат, броней, задач и связи с Турвизором. Проверьте даты и номер.')
             return redirect('contract_card',pk=cloned.pk)
+        elif action in ('delete_tourist','delete_line'):
+            require(request.user,'crm.change_contractline' if action=='delete_tourist' else 'crm.delete_contractline')
+            line_id=request.POST.get('line_id') or request.POST.get('entry_id','')
+            if not line_id.isdecimal() or len(line_id)>18:raise Http404
+            line=get_object_or_404(ContractLine,pk=line_id,contract=contract)
+            before=model_to_dict(line)
+            if action=='delete_tourist':
+                if str(line.tourist_id)!=request.POST.get('entry_id'):raise Http404
+                line.tourist=None;line.tourist_snapshot={};line.save(update_fields=['tourist','tourist_snapshot'])
+                audit(request.user,line,before,'tourist_detached')
+                messages.success(request,'Турист убран из строки договора. Строка стоимости и карточка туриста в справочнике сохранены.')
+            else:
+                AuditEvent.objects.create(actor=request.user,object_type='crm.Contract',object_id=str(contract.pk),action='line_deleted',changes={'line':{'old':str(line.pk),'new':None},'amount':{'old':str(line.amount),'new':None},'tourist':{'old':str(line.tourist_id),'new':None}})
+                line.delete();messages.success(request,'Строка стоимости удалена.')
+            contract.save(update_fields=['updated_at'])
+            return redirect('/contracts/'+str(pk)+'/?tab=tourists')
         elif action=='customer':
             require(request.user,'crm.change_customer');active='customer'
             if customer_form.is_valid():
@@ -129,7 +145,7 @@ def contract_card(request,pk=None):
         history=list(AuditEvent.objects.filter(query).select_related('actor')[:60]) if request.user.has_perm('crm.view_auditevent') else []
         from django.apps import apps
         from .templatetags.money import money
-        labels={'card_saved':'Договор сохранён','card_customer_saved':'Данные заказчика изменены','card_payment_saved':'Финансовая операция сохранена','card_booking_saved':'Бронь ТО сохранена','card_line_saved':'Стоимость изменена','card_task_saved':'Задача сохранена','card_tourist_saved':'Данные туриста изменены','tourvisor_created':'Договор импортирован из Турвизора','tourvisor_updated':'Данные обновлены из Турвизора','created':'Запись создана','updated':'Запись изменена','inline_saved':'Строка договора сохранена','completed':'Задача выполнена','reopened':'Задача возвращена в запланированные','rescheduled':'Задача перенесена','copied':'Договор скопирован'}
+        labels={'line_deleted':'Строка стоимости удалена','tourist_detached':'Турист убран из строки договора','card_saved':'Договор сохранён','card_customer_saved':'Данные заказчика изменены','card_payment_saved':'Финансовая операция сохранена','card_booking_saved':'Бронь ТО сохранена','card_line_saved':'Стоимость изменена','card_task_saved':'Задача сохранена','card_tourist_saved':'Данные туриста изменены','tourvisor_created':'Договор импортирован из Турвизора','tourvisor_updated':'Данные обновлены из Турвизора','created':'Запись создана','updated':'Запись изменена','inline_saved':'Строка договора сохранена','completed':'Задача выполнена','reopened':'Задача возвращена в запланированные','rescheduled':'Задача перенесена','copied':'Договор скопирован'}
         for event in history:
             event.display_action=labels.get(event.action,'Изменение записи')
             event.details=[]
