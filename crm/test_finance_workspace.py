@@ -8,6 +8,7 @@ from .models import Customer,Operator,Contract,Payment,PaymentMethod,AuditEvent
 
 class FinanceWorkspaceTests(TestCase):
     def setUp(self):
+        clock=patch('crm.finance_views.timezone.localdate',return_value=date(2026,10,25));clock.start();self.addCleanup(clock.stop)
         self.user=get_user_model().objects.create_superuser('owner','test@example.test','test-password');self.client.force_login(self.user)
         self.customer=Customer.objects.create(name='Петров Иван');self.other=Customer.objects.create(name='Другой')
         self.operator=Operator.objects.create(name='Тестовый ТО');self.method=PaymentMethod.objects.create(name='Карта')
@@ -34,7 +35,7 @@ class FinanceWorkspaceTests(TestCase):
         for query in ('start=bad','start=2026-11-01&end=2026-10-01'):
             r=self.client.get('/finances/?'+query);self.assertFalse(r.context['dateform'].is_valid());self.assertEqual(r.context['count'],0)
     def test_totals_include_all_pages(self):
-        Payment.objects.bulk_create([Payment(contract=self.contract,kind='customer',amount=1,method=self.method) for _ in range(101)])
+        Payment.objects.bulk_create([Payment(contract=self.contract,kind='customer',amount=1,method=self.method,date=date(2026,10,25)) for _ in range(101)])
         r=self.client.get('/finances/?page=2')
         self.assertEqual(r.context['count'],105);self.assertEqual(len(r.context['rows']),5)
         self.assertEqual(r.context['incoming'],Decimal('1151'));self.assertIn('page=2',r.context['return_query'])

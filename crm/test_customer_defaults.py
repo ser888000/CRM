@@ -56,7 +56,7 @@ class CustomerCreationTests(TestCase):
         self.user=get_user_model().objects.create_superuser('owner','owner@example.test','test-password-123');self.client.force_login(self.user)
     def test_company_and_person_create_in_dialog(self):
         r=self.client.get('/contracts/new/')
-        self.assertContains(r,'+ Новый заказчик');self.assertContains(r,'new-customer-dialog');self.assertContains(r,'Юридическое лицо')
+        self.assertContains(r,'data-reference-add="/references/customer/"');self.assertContains(r,'crm/reference_dialog.js');self.assertContains(self.client.get('/references/customer/new/'),'Юридическое лицо')
         data={'customer-new-kind':'company','customer-new-company_name':'ООО Пример','customer-new-inn':'7700000000','customer-new-kpp':'770001001','customer-new-ogrn':'1234567890123','customer-new-bik':'123456789','customer-new-account':'12345678901234567890','customer-new-representative':'Директор'}
         r=self.client.post('/customers/new/',data);self.assertEqual(r.status_code,200)
         customer=Customer.objects.get(pk=r.json()['id']);self.assertEqual(customer.name,'ООО Пример');self.assertEqual(customer.inn,'7700000000')

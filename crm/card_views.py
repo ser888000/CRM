@@ -12,7 +12,7 @@ from .models import Contract,Payment,Booking,ContractLine,Task,Tourist,AuditEven
 from .card_forms import CardContractForm,CustomerCardForm,TouristCardForm,CardPaymentForm,BookingCardForm,LineCardForm,TaskCardForm
 from .services import create_tasks,create_contract_tasks,copy_contract
 
-GROUPS=[('Основное',['number','date','customer','operator','contract_type','notes']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['flights','transfer','insurance','fuel_surcharge','services']),('Оплата и примечания',['payment_method','operator_due','operator_paid','metrika_id'])]
+GROUPS=[('Основное',['number','date','contract_type','customer','operator','notes']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['flights','transfer','insurance','fuel_surcharge','services']),('Оплата и примечания',['payment_method','operator_due','operator_paid','metrika_id'])]
 
 def require(user,*perms):
     if not user.has_perms(perms):raise PermissionDenied
@@ -152,4 +152,4 @@ def contract_card(request,pk=None):
             snapshot_fields.extend((label,str(values[key])) for key,label in labels.items() if values.get(key))
     return render(request,'crm/contract_card.html',{'legacy_operator_original':legacy_record.payload.get('ADD_SUM_OPLATY_TO',0) if legacy_record else 0,'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
         'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'contract_task_rows':[{'kind':kind,'selected':str(kind.pk) in {str(v) for v in (form['task_templates'].value() or [])},'date':form[f'task_due_{kind.pk}']} for kind in form.fields['task_templates'].queryset], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
-        'payments':payments,'task_count':task_count,'has_more_tasks':task_count>len(tasks),'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})
+        'payment_groups':[('Заказчик',[p for p in payments if p.kind in ('customer','customer_refund')]),('Туроператор',[p for p in payments if p.kind in ('operator','operator_refund')])],'payments':payments,'task_count':task_count,'has_more_tasks':task_count>len(tasks),'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})

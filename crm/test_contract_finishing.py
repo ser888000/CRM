@@ -15,13 +15,13 @@ class ContractFinishingTests(TestCase):
         Payment.objects.create(contract=self.c,kind='operator_refund',amount=5000,method=self.method)
         self.assertEqual(self.c.commission_percent,Decimal('15'))
         response=self.client.get(f'/contracts/{self.c.pk}/')
-        self.assertContains(response,'Процент комиссии');self.assertContains(response,'15,00')
+        self.assertContains(response,'Комиссия');self.assertContains(response,'15,00')
         Payment.objects.create(contract=self.c,kind='operator',amount=20000,method=self.method)
         self.assertEqual(self.c.commission_percent,Decimal('-5'))
     def test_zero_contract_amount_is_not_divided(self):
         self.assertIsNone(self.c.commission_percent)
         response=self.client.get(f'/contracts/{self.c.pk}/');self.assertEqual(response.status_code,200)
-        self.assertContains(response,'Процент комиссии')
+        self.assertContains(response,'Комиссия')
     def test_customer_address_and_notes_are_last(self):
         fields=list(CustomerCardForm().fields)
         self.assertEqual(fields[-2:],['address','passport'])

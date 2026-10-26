@@ -25,7 +25,7 @@ class TaskTuningTests(TestCase):
         response=self.client.get('/tasks/36071/')
         self.assertContains(response,'Емайл заказчика');self.assertContains(response,'https://example.test/ABC')
         self.assertContains(response,'id="id_task_type"',count=1)
-        self.assertContains(response,'type="hidden" name="task_type"')
+        self.assertContains(response,'<select name="task_type"')
         self.assertEqual(self.client.get('/tasks/booking/',{'contract':self.contract.pk,'number':'NEW'}).json()['bookings'][0]['url'],'https://example.test/NEW')
     def test_reference_archive_retains_saved_values(self):
         method=PaymentMethod.objects.create(name='Устаревший',is_hidden=True,is_default=True)

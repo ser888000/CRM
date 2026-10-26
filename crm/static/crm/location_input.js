@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  document.querySelectorAll('.crm-location-input').forEach((wrapper,index)=>{
   const input=wrapper.querySelector('input'),list=wrapper.querySelector('[role="listbox"]');
   const names=JSON.parse(wrapper.querySelector('script[type="application/json"]').textContent);
+  input.addEventListener('reference-saved',event=>{const index=names.indexOf(event.detail.old);if(index>=0)names.splice(index,1);if(!names.includes(event.detail.name))names.push(event.detail.name)});
   list.id=input.id+'_choices';input.setAttribute('aria-controls',list.id);
   let selected=-1,items=[];
   function close(){list.hidden=true;selected=-1;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');}

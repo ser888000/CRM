@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django import forms
 from .forms import ContractForm,CustomerForm,TouristForm
-from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskTemplate,Currency
+from .models import Customer,Tourist,Payment,Booking,ContractLine,Task,TaskType,TaskTemplate,Currency
 from .services import task_due,contract_task_schedule
 from .widgets import MoneyInput
 from .reference_defaults import apply_reference_defaults
@@ -72,8 +72,22 @@ class LineCardForm(forms.ModelForm):
 class TaskCardForm(forms.ModelForm):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
+        self.fields['task_type'].label='Задача'
+        if self.instance.pk and not self.instance.task_type_id:
+            self.fields['task_type'].empty_label=self.instance.title+' (текущее)'
+            self.fields['task_type'].required=False
+        elif not self.is_bound or not self.data.get(self.add_prefix('title')):self.fields['task_type'].required=True
         apply_reference_defaults(self,kwargs.get('initial'))
+    def clean(self):
+        data=super().clean()
+        kind=data.get('task_type')
+        if kind:
+            self.instance.title=kind.name
+            if not data.get('description'):data['description']=kind.description
+        elif self.is_bound and self.data.get(self.add_prefix('title')):
+            self.instance.title=self.data[self.add_prefix('title')]
+        return data
     class Meta:
         model=Task
-        fields=['title','description','due','employee','done']
+        fields=['task_type','description','due','employee','done']
         widgets={'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':2})}

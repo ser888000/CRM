@@ -86,7 +86,10 @@ def journal(request):
     from .models import Booking
     fields=['id','title','due','done','booking_number','task_type_id','customer_id','contract_id','operator_id','employee_id']
     if params.get('q'):fields.append('description')
-    tasks=list(Task.objects.only(*fields).order_by('done','due','pk'))
+    fast_scope=mode in ('today','tomorrow') and not search_all_dates and not any(params.getlist('f_'+key) for key,_ in COLUMNS) and not request.GET.get('choice_column')
+    queryset=Task.objects.all()
+    if fast_scope:queryset=queryset.filter(Q(done=False)|Q(due__in=[today,today+timedelta(days=1)]))
+    tasks=list(queryset.only(*fields).order_by('done','due','pk'))
     contracts={c.pk:c for c in Contract.objects.filter(pk__in={t.contract_id for t in tasks if t.contract_id}).only('id','number','customer_id','operator_id')}
     customers={c.pk:c for c in Customer.objects.filter(pk__in={t.customer_id for t in tasks if t.customer_id}|{c.customer_id for c in contracts.values()}).only('id','name','main_phone','main_email','phones','emails')}
     operators={o.pk:o for o in Operator.objects.filter(pk__in={t.operator_id for t in tasks if t.operator_id}|{c.operator_id for c in contracts.values()})}
@@ -131,7 +134,7 @@ def journal(request):
     for key,label in COLUMNS:
         selected=request.GET.getlist('f_'+key)
         choices=sorted({t.column_values[key] for t in tasks}|set(selected),key=normalize_location)
-        remote=len(choices)>100
+        remote=fast_scope or len(choices)>100
         shown=sorted(set(choices[:100])|set(selected),key=normalize_location) if remote else choices
         columns.append({'key':key,'label':label,'remote':remote,'options':[{'value':v,'selected':v in selected} for v in shown],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
     tasks=[t for t in tasks if all(not request.GET.getlist('f_'+key) or t.column_values[key] in request.GET.getlist('f_'+key) for key,_ in COLUMNS)]
@@ -173,7 +176,9 @@ class TaskEditorForm(forms.ModelForm):
         widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':3})}
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['task_type'].widget=forms.HiddenInput()
+        self.fields['task_type'].label='Задача'
+        self.fields['task_type'].required=not (self.is_bound and self.data.get('title'))
+        self.fields['title'].widget=forms.HiddenInput()
         self.fields['title'].label='Задача'
         if self.instance.pk:self.initial['title']=self.instance.display_title
         self.fields['title'].required=False
@@ -208,7 +213,7 @@ class TaskEditorForm(forms.ModelForm):
 
     def clean(self):
         data=super().clean()
-        if data.get('title'):
+        if data.get('title') and not data.get('task_type'):
             data['task_type']=self.fields['task_type'].queryset.filter(name=data['title']).first()
         if data.get('task_type'):
             data['title']=data['task_type'].name

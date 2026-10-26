@@ -17,7 +17,7 @@ class ContractTaskTypesTests(TestCase):
         self.assertEqual(list(form.fields['task_templates'].queryset),[self.kind])
         self.assertEqual(form.fields[f'task_due_{self.kind.pk}'].initial,self.contract.date)
         response=self.client.get(f'/contracts/{self.contract.pk}/')
-        self.assertContains(response,'Договорная задача');self.assertNotContains(response,'Только отдельная задача')
+        self.assertContains(response,'Договорная задача');self.assertNotContains(response,f'name="task_templates" value="{self.other.pk}"')
         self.assertContains(response,'contract-task-row')
     def test_manual_save_creates_selected_type_and_preserves_import_task_rules(self):
         ignored=TaskTemplate.objects.create(name='Импортная задача',task_type=self.other,anchor='start',offset=-1)
