@@ -59,6 +59,19 @@ class OneCExportTests(TestCase):
         self.assertEqual(plan['contracts'][0]['shipment_status'], 'requires_review')
         self.assertIsNone(plan['contracts'][0]['shipment_date'])
 
+    def test_package_contracts_are_chronological_regardless_of_selection_order(self):
+        june = self.make_contract('JUNE')
+        june.date = date(2026, 6, 1); june.save()
+        march = self.make_contract('MARCH')
+        march.date = date(2026, 3, 1); march.save()
+        plan = build_plan([june.pk, march.pk, self.contract.pk], 2026)
+        self.assertEqual([c['date'] for c in plan['contracts']],
+                         ['2026-01-01', '2026-03-01', '2026-06-01'])
+        with ZipFile(io.BytesIO(package_bytes(plan))) as archive:
+            root = ET.fromstring(archive.read('exchange.xml'))
+        self.assertEqual([c.get('VOUCHER_DATE') for c in root.findall('CONTRACT')],
+                         ['2026-01-01', '2026-03-01', '2026-06-01'])
+
     def test_cash_orders_keep_positive_document_sum_and_signed_source_in_xml(self):
         receipt = self.pay(method='Касса чек', amount=80000)
         refund = self.pay(method='Касса чек', amount=5000, kind='customer_refund', day=11)

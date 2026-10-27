@@ -83,7 +83,7 @@ def build_plan(contract_ids, year):
         raise ValueError('Укажите год от 1900 до 2100.')
     payments = Payment.objects.select_related('method', 'legacy_payer', 'contract__customer').order_by('date', 'pk')
     contracts = list(with_financials(Contract.objects.filter(pk__in=ids)).select_related(
-        'customer', 'operator', 'payment_method').prefetch_related(Prefetch('payments', queryset=payments)))
+        'customer', 'operator', 'payment_method').order_by('date', 'pk').prefetch_related(Prefetch('payments', queryset=payments)))
     if len(contracts) != len(ids):
         raise ValueError('Один из выбранных договоров больше не существует.')
     plan = {'format': 'aborigen-crm-one-c-test', 'version': 1, 'year': year,

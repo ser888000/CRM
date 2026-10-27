@@ -281,6 +281,7 @@
         Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
     КонецЕсли;
     crmStage="Начало сохранения";
+    crmResult="posting_failed";
     НачатьТранзакцию(); crmTransaction=1;
     Если crmVoucherExists(crmApplication)>0 Тогда crmStop("Путёвка уже существует, создание отменено."); Возврат; КонецЕсли;
     crmApp.НайтиДокумент(crmApplication);
