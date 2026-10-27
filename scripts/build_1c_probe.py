@@ -15,13 +15,17 @@ import olefile
 DONOR_SHA256 = '905359f545348ce8ef6f77b3c4ae817533899f9296d95841a7732601fc899cca'
 
 
-def build(donor, output):
+APPLICATION_DONOR_SHA256 = '00672d6eac1227d8193e0be608a84fb02a98218964a7b509e33b7ee9bcfde7b7'
+
+
+def build(donor, output, application=False):
     donor, output = Path(donor), Path(output)
     if donor.resolve() == output.resolve():
         raise ValueError('Output must differ from the original.')
-    if hashlib.sha256(donor.read_bytes()).hexdigest() != DONOR_SHA256:
-        raise ValueError('Use the inspected Conv44.ert shell from the provided archive.')
-    source = Path(__file__).resolve().parents[1] / 'integrations/1c77/probe.1c'
+    expected = APPLICATION_DONOR_SHA256 if application else DONOR_SHA256
+    if hashlib.sha256(donor.read_bytes()).hexdigest() != expected:
+        raise ValueError('Use the inspected shell for the selected mode.')
+    source = Path(__file__).resolve().parents[1] / 'integrations/1c77' / ('application.1c' if application else 'probe.1c')
     text = source.read_text().replace('\r\n', '\n').replace('\n', '\r\n').encode('cp1251')
     compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
     module = compressor.compress(text) + compressor.flush()
@@ -46,5 +50,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('donor')
     parser.add_argument('output')
+    parser.add_argument('--application', action='store_true')
     args = parser.parse_args()
-    print(build(args.donor, args.output))
+    print(build(args.donor, args.output, application=args.application))
