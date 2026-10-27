@@ -232,20 +232,26 @@
     Возврат crmRef.ТекущийЭлемент();
 КонецФункции
 
-Процедура crmImport()
-    Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда
-        Предупреждение("Не найдена V7Plus.dll."); Возврат;
+Процедура crmImport(crmBatch=0,crmBatchRoot="",crmBatchIndex=0,crmResult="")
+    crmResult="failed";
+    Если crmBatch=1 Тогда
+        // Обрабатываем уже прочитанный и подтверждённый пакет, не перечитываем файл.
+        crmRoot=crmBatchRoot;
+    Иначе
+        Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда
+            Предупреждение("Не найдена V7Plus.dll."); Возврат;
+        КонецЕсли;
+        crmXML=СоздатьОбъект("AddIn.XMLParser");
+        Если Число(crmXML.ВерсияАнализатора)<2 Тогда
+            Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат;
+        КонецЕсли;
+        crmFile=""; crmDir="";
+        Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml из CRM","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
+        crmXMLDoc=crmXML.СоздатьДокумент();
+        crmStage="Чтение XML";
+        crmXMLDoc.Загрузить(crmDir+crmFile);
+        crmRoot=crmXMLDoc.ЭлементДокумента;
     КонецЕсли;
-    crmXML=СоздатьОбъект("AddIn.XMLParser");
-    Если Число(crmXML.ВерсияАнализатора)<2 Тогда
-        Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат;
-    КонецЕсли;
-    crmFile=""; crmDir="";
-    Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml из CRM","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
-    crmXMLDoc=crmXML.СоздатьДокумент();
-    crmStage="Чтение XML";
-    crmXMLDoc.Загрузить(crmDir+crmFile);
-    crmRoot=crmXMLDoc.ЭлементДокумента;
     Если crmRoot.Наименование<>"CRM_TEST_EXPORT" Тогда
         Предупреждение("Это не пакет CRM."); Возврат;
     КонецЕсли;
@@ -262,7 +268,12 @@
         crmList.ДобавитьЗначение(crmN,"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+" от "+crmNode.ПолучитьАтрибут("DATE"));
     КонецЦикла;
     crmChoice=0; crmPosition=1;
-    Если crmList.ВыбратьЗначение(crmChoice,"Одну заявку для загрузки в тестовую копию",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
+    Если crmBatch=1 Тогда
+        Если (crmBatchIndex<0) Или (crmBatchIndex>=crmNodes.КоличествоУзлов) Тогда Возврат; КонецЕсли;
+        crmChoice=crmBatchIndex;
+    Иначе
+        Если crmList.ВыбратьЗначение(crmChoice,"Одну заявку для загрузки в тестовую копию",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmNode=crmNodes.ПолучитьУзел(crmChoice);
     crmID=crmNode.ПолучитьАтрибут("ID");
     Если crmUUID(crmID)=0 Тогда Предупреждение("Некорректный ключ CRM."); Возврат; КонецЕсли;
@@ -270,7 +281,10 @@
     crmFound=crmExisting(crmID);
     Если crmError(crmFound)=1 Тогда Возврат; КонецЕсли;
     Если ПустоеЗначение(crmFound)=0 Тогда
-        Если crmRenameAgreementTitles(crmFound,crmID)=0 Тогда Возврат; КонецЕсли;
+        Если crmBatch=0 Тогда
+            Если crmRenameAgreementTitles(crmFound,crmID)=0 Тогда Возврат; КонецЕсли;
+        КонецЕсли;
+        crmResult="existing";
         Сообщить("CRM: заявка уже существует: "+Строка(crmFound)+". Новая не создана, денежные документы не изменялись.");
         Возврат;
     КонецЕсли;
@@ -326,7 +340,9 @@
     crmPrompt=crmPrompt+"Заказчик: "+?(ПустоеЗначение(crmCustomer)=1,crmCustomerName,Строка(crmCustomer))+РазделительСтрок;
     crmPrompt=crmPrompt+"Тур: "+Строка(crmTour)+РазделительСтрок;
     crmPrompt=crmPrompt+"ТО: "+Строка(crmOperator)+"; сумма: "+Строка(crmAmount)+"; себестоимость: "+Строка(crmCost);
-    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    Если crmBatch=0 Тогда
+        Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmStage="Начало сохранения";
     НачатьТранзакцию(); crmTransaction=1;
     crmStage="Поиск заявки по ключу CRM";
@@ -387,13 +403,13 @@
         ОтменитьТранзакцию(); crmTransaction=0;
         Предупреждение("Не прошла проверка сохранённых данных. Создание отменено."); Возврат;
     КонецЕсли;
-    ЗафиксироватьТранзакцию(); crmTransaction=0;
+    ЗафиксироватьТранзакцию(); crmTransaction=0; crmResult="created";
     Сообщить("CRM: создана одна непроведённая заявка: "+Строка(crmSaved));
     Сообщить("Договор CRM: "+crmNode.ПолучитьАтрибут("NUMBER")+"; ключ: "+crmID);
     Сообщить("Сумма: "+Строка(crmAmount)+"; себестоимость: "+Строка(crmCost)+"; комиссия: "+Строка(crmCommission));
     Сообщить("Путёвка, отгрузка и платежи на этом этапе не создаются. Повторите загрузку этого же договора для проверки отсутствия дубля.");
     crmStage="Открытие сохранённой заявки";
-    ОткрытьФорму(crmSaved);
+    Если crmBatch=0 Тогда ОткрытьФорму(crmSaved); КонецЕсли;
 КонецПроцедуры
 
 Процедура ПриОткрытии()
