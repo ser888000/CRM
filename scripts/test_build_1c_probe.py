@@ -23,6 +23,22 @@ class UnifiedCompositionTests(unittest.TestCase):
             self.assertIn(literal, source)
         source.encode('cp1251')
 
+    def test_1c77_local_procedures_are_defined_before_their_calls(self):
+        directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source = unified_source(directory)
+        definitions = list(re.finditer(r'^(?:Функция|Процедура) (\w+)\(', source, re.M))
+        positions = {match[1]: match.start() for match in definitions}
+        # 7.7 resolves calls in declaration order; name existence alone is insufficient.
+        clean = re.sub(r'"(?:""|[^"\n])*"|//[^\n]*', lambda match: ' ' * len(match[0]), source)
+        for index, definition in enumerate(definitions):
+            end = definitions[index + 1].start() if index + 1 < len(definitions) else len(source)
+            body = clean[definition.end():end]
+            for call in re.finditer(r'\b(\w+)\s*\(', body):
+                if call[1] in positions:
+                    self.assertLessEqual(positions[call[1]], definition.start(),
+                                         f'{definition[1]} calls {call[1]} before declaration')
+        self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
+
     def test_composition_preserves_strings_comments_and_distinct_helpers(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

@@ -26,7 +26,10 @@ def unified_source(directory):
     """Compose only our modules, preserving literals and stage-specific helpers."""
     directory = Path(directory)
     wrapper = (directory / 'unified.1c').read_text()
-    header, entry = wrapper.split('Процедура crmUnified()', 1)
+    first_procedure = re.search(r'^(?:Процедура|Функция) ', wrapper, re.M)
+    if first_procedure is None:
+        raise ValueError('Unified entry module has no procedures.')
+    header, entry = wrapper[:first_procedure.start()], wrapper[first_procedure.start():]
     shared = {'crmUUID', 'crmError', 'crmExisting'}
     seen = {}
     blocks = []
@@ -52,7 +55,7 @@ def unified_source(directory):
     if set(seen) != shared:
         raise ValueError('Missing unified shared helpers.')
     common = (directory / 'application_services.1c').read_text()
-    return header + common + '\n' + '\n\n'.join(blocks) + '\n\nПроцедура crmUnified()' + entry
+    return header + common + '\n' + '\n\n'.join(blocks) + '\n\n' + entry
 
 
 def build(donor, output, application=False, voucher=False, shipment=False, payment=False, unified=False):
