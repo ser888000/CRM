@@ -81,6 +81,63 @@
     Возврат "";
 КонецФункции
 
+// Соответствия хранятся в настройках 1С для пользователя и этой базы.
+Функция crmOperatorMapping(crmOperatorID,crmOperatorName)
+    crmKey="AborigenCRM_TO_V1_"+НРег(КаталогИБ())+"_"+crmOperatorID;
+    crmStored="";
+    Попытка
+        crmStored=ВосстановитьЗначение(crmKey);
+        Если ТипЗначения(crmStored)=11 Тогда
+            crmMapped=СоздатьОбъект("Справочник.Контрагенты");
+            crmMapped.НайтиЭлемент(crmStored);
+            Если (crmMapped.Выбран()=1) И (crmMapped.ЭтоГруппа()=0) И (crmMapped.ПометкаУдаления()=0) Тогда
+                Сообщить("CRM: ТО "+crmOperatorName+" -> "+Строка(crmStored)+" (сохранённое соответствие).");
+                Возврат crmStored;
+            КонецЕсли;
+        КонецЕсли;
+    Исключение
+        // Отсутствующая или устаревшая ссылка требует нового выбора.
+        crmStored="";
+    КонецПопытки;
+    crmMapped=СоздатьОбъект("Справочник.Контрагенты");
+    Если crmMapped.Выбрать("ТО CRM: "+crmOperatorName+" — выберите ЮЛ в 1С",)=0 Тогда Возврат -1; КонецЕсли;
+    Если (crmMapped.ЭтоГруппа()=1) Или (crmMapped.ПометкаУдаления()=1) Тогда
+        Предупреждение("Выберите действующего контрагента, а не группу."); Возврат -1;
+    КонецЕсли;
+    crmSelected=crmMapped.ТекущийЭлемент();
+    СохранитьЗначение(crmKey,crmSelected);
+    crmStored=ВосстановитьЗначение(crmKey);
+    Если ТипЗначения(crmStored)<>11 Тогда
+        Предупреждение("Не удалось сохранить соответствие ТО в настройках 1С."); Возврат -1;
+    КонецЕсли;
+    Если crmStored<>crmSelected Тогда
+        Предупреждение("Не прошла проверка сохранённого соответствия ТО."); Возврат -1;
+    КонецЕсли;
+    Сообщить("CRM: запомнено соответствие ТО "+crmOperatorName+" -> "+Строка(crmSelected));
+    Возврат crmSelected;
+КонецФункции
+
+Функция crmFixedTour()
+    crmTours=СоздатьОбъект("Справочник.Туры");
+    crmTours.ВыбратьЭлементы();
+    crmCount=0; crmFound="";
+    Пока crmTours.ПолучитьЭлемент()=1 Цикл
+        Если (crmTours.ЭтоГруппа()=0) И (crmTours.ПометкаУдаления()=0) Тогда
+            crmCode=СокрЛП(Строка(crmTours.Код));
+            Пока (СтрДлина(crmCode)>1) И (Лев(crmCode,1)="0") Цикл
+                crmCode=Сред(crmCode,2);
+            КонецЦикла;
+            Если crmCode="319" Тогда
+                crmFound=crmTours.ТекущийЭлемент(); crmCount=crmCount+1;
+            КонецЕсли;
+        КонецЕсли;
+    КонецЦикла;
+    Если crmCount<>1 Тогда
+        Предупреждение("Не найден единственный действующий тур с кодом 319. Заявка не создана."); Возврат -1;
+    КонецЕсли;
+    Возврат crmFound;
+КонецФункции
+
 Функция crmAgreement(crmOwner,crmID)
     crmRef=СоздатьОбъект("Справочник.Договоры");
     crmRef.ИспользоватьВладельца(crmOwner);
@@ -148,6 +205,8 @@
     crmCustomerName=СокрЛП(crmCustomerNode.ПолучитьАтрибут("NAME"));
     crmOperatorName=СокрЛП(crmOperatorNode.ПолучитьАтрибут("NAME"));
     crmCustomerID=crmCustomerNode.ПолучитьАтрибут("ID");
+    crmOperatorID=crmOperatorNode.ПолучитьАтрибут("ID");
+    Если crmUUID(crmOperatorID)=0 Тогда Предупреждение("Некорректный ключ ТО из CRM."); Возврат; КонецЕсли;
     Если (ПустаяСтрока(crmCustomerName)=1) Или (ПустаяСтрока(crmOperatorName)=1) Или (crmUUID(crmCustomerID)=0) Тогда
         Предупреждение("Не заполнены заказчик, ТО или ключ заказчика."); Возврат;
     КонецЕсли;
@@ -173,15 +232,13 @@
     crmStage="Выбор заказчика";
     crmCustomer=crmReference("Контрагенты",crmCustomerName,0);
     Если crmError(crmCustomer)=1 Тогда Возврат; КонецЕсли;
-    crmStage="Выбор ТО";
-    crmOperator=crmReference("Контрагенты",crmOperatorName,1);
-    Если crmError(crmOperator)=1 Тогда Возврат; КонецЕсли;
-    crmStage="Выбор тура";
-    crmTour=crmReference("Туры",crmOperatorName,1);
+    crmStage="Тур с кодом 319";
+    crmTour=crmFixedTour();
     Если crmError(crmTour)=1 Тогда Возврат; КонецЕсли;
-    Если crmTour.ТурОператор<>crmOperator Тогда
-        Предупреждение("Выбранный тур относится к другому ТО. Выберите тур выбранного туроператора."); Возврат;
-    КонецЕсли;
+    crmStage="Соответствие ТО";
+    crmOperator=crmOperatorMapping(crmOperatorID,crmOperatorName);
+    Если crmError(crmOperator)=1 Тогда Возврат; КонецЕсли;
+    // ТО определяется соответствием CRM, не реквизитами служебного тура 319.
     crmStage="Строка заказчика";
     crmTourist=crmReference("Туристы",crmCustomerName,0);
     Если crmError(crmTourist)=1 Тогда Возврат; КонецЕсли;
@@ -240,7 +297,7 @@
     crmStage="Проверка сохранённой заявки";
     crmCheck=СоздатьОбъект("Документ.Заявка");
     crmCheck.НайтиДокумент(crmSaved);
-    Если (crmCheck.Проведен()<>0) Или (СокрЛП(crmCheck.Идентификатор)<>crmID) Или (crmCheck.ИтогоСумма<>crmAmount) Или (crmCheck.ИтогоСебестоимость<>crmCost) Тогда
+    Если (crmCheck.Проведен()<>0) Или (СокрЛП(crmCheck.Идентификатор)<>crmID) Или (crmCheck.ИтогоСумма<>crmAmount) Или (crmCheck.ИтогоСебестоимость<>crmCost) Или (crmCheck.ТурОператор<>crmOperator) Или (crmCheck.Тур<>crmTour) Тогда
         ОтменитьТранзакцию(); crmTransaction=0;
         Предупреждение("Не прошла проверка сохранённых данных. Создание отменено."); Возврат;
     КонецЕсли;
