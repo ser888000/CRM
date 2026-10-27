@@ -138,20 +138,99 @@
     Возврат crmFound;
 КонецФункции
 
-Функция crmAgreement(crmOwner,crmID)
-    crmRef=СоздатьОбъект("Справочник.Договоры");
-    crmRef.ИспользоватьВладельца(crmOwner);
-    crmText="CRM "+crmID;
-    Если crmRef.НайтиПоНаименованию(crmText,0)=1 Тогда
-        Если crmRef.ПометкаУдаления()=1 Тогда
-            crmFailure=1/0;
+Функция crmAgreementTitle(crmDoc)
+    Возврат "Заявка №"+глПреобразоватьНомерДок(crmDoc.НомерДок)+" от "+Формат(crmDoc.ДатаДок,"Д ДД.ММ.ГГ");
+КонецФункции
+
+Функция crmCheckAgreementTitle(crmAgreementRef,crmOwner,crmLegacyTitle,crmTitle)
+    Если ПустоеЗначение(crmAgreementRef)=1 Тогда Возврат 0; КонецЕсли;
+    crmRef=СоздатьОбъект("Справочник.Договоры"); crmRef.НайтиЭлемент(crmAgreementRef);
+    Если crmRef.Выбран()=0 Тогда Предупреждение("Не найден договор расчётов."); Возврат -1; КонецЕсли;
+    // Переименовываем только собственные старые названия, не пользовательские.
+    Если СокрЛП(crmRef.Наименование)<>crmLegacyTitle Тогда Возврат 0; КонецЕсли;
+    Если (crmRef.Владелец<>crmOwner) Или (crmRef.ПометкаУдаления()=1) Тогда
+        Предупреждение("Не совпал владелец договора расчётов или он помечен на удаление."); Возврат -1;
+    КонецЕсли;
+    Если СтрДлина(crmTitle)>Метаданные.Справочник("Договоры").ДлинаНаименования Тогда
+        Предупреждение("Название договора расчётов длиннее допустимого."); Возврат -1;
+    КонецЕсли;
+    crmOther=СоздатьОбъект("Справочник.Договоры"); crmOther.ИспользоватьВладельца(crmOwner);
+    Если crmOther.НайтиПоНаименованию(crmTitle,0)=1 Тогда
+        Если crmOther.ТекущийЭлемент()<>crmAgreementRef Тогда
+            Предупреждение("У этого контрагента уже есть другой договор с названием "+crmTitle+". Ссылки автоматически не объединяются."); Возврат -1;
         КонецЕсли;
+    КонецЕсли;
+    Возврат 1;
+КонецФункции
+
+Функция crmRenameAgreementTitles(crmApplication,crmID)
+    crmParent=СоздатьОбъект("Документ.Заявка"); crmParent.НайтиДокумент(crmApplication);
+    Если (СокрЛП(crmParent.Идентификатор)<>crmID) Или (Найти(crmParent.Примечания,"Ключ CRM: "+crmID)=0) Тогда
+        Предупреждение("Для изменения названий нужна служебная метка нашей импортированной заявки."); Возврат 0;
+    КонецЕсли;
+    crmTitle=crmAgreementTitle(crmParent); crmLegacyTitle="CRM "+crmID;
+    crmReferences=СоздатьОбъект("СписокЗначений"); crmOwners=СоздатьОбъект("СписокЗначений");
+    crmReferences.ДобавитьЗначение(crmParent.ДоговорПлательщика); crmReferences.ДобавитьЗначение(crmParent.ДоговорОператора);
+    crmOwners.ДобавитьЗначение(crmParent.Плательщик); crmOwners.ДобавитьЗначение(crmParent.ТурОператор);
+    crmChanges=СоздатьОбъект("СписокЗначений"); crmChangeOwners=СоздатьОбъект("СписокЗначений");
+    Для crmN=1 По 2 Цикл
+        crmAgreementRef=crmReferences.ПолучитьЗначение(crmN); crmOwner=crmOwners.ПолучитьЗначение(crmN);
+        crmState=crmCheckAgreementTitle(crmAgreementRef,crmOwner,crmLegacyTitle,crmTitle);
+        Если crmState=-1 Тогда Возврат 0; КонецЕсли;
+        Если crmState=1 Тогда
+            Если crmChanges.НайтиЗначение(crmAgreementRef)=0 Тогда
+                crmChanges.ДобавитьЗначение(crmAgreementRef); crmChangeOwners.ДобавитьЗначение(crmOwner);
+            КонецЕсли;
+        КонецЕсли;
+    КонецЦикла;
+    Если crmChanges.РазмерСписка()=0 Тогда
+        Сообщить("CRM: названия оснований уже читаемые или заданы вручную, не изменялись."); Возврат 1;
+    КонецЕсли;
+    crmPrompt="Заявка уже существует. Переименовать основания CRM с длинным кодом в "+crmTitle+"?"+РазделительСтрок;
+    crmPrompt=crmPrompt+"Изменится только название договоров расчётов. Ссылки, суммы, проводки и ключ заявки сохраняются.";
+    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат 0; КонецЕсли;
+    crmStage="Читаемые названия оснований";
+    НачатьТранзакцию(); crmTransaction=1;
+    crmParent.НайтиДокумент(crmApplication);
+    Если (crmAgreementTitle(crmParent)<>crmTitle) Или (СокрЛП(crmParent.Идентификатор)<>crmID) Или (crmParent.ДоговорПлательщика<>crmReferences.ПолучитьЗначение(1)) Или (crmParent.ДоговорОператора<>crmReferences.ПолучитьЗначение(2)) Тогда
+        ОтменитьТранзакцию(); crmTransaction=0;
+        Предупреждение("Заявка или её основания изменились. Переименование отменено."); Возврат 0;
+    КонецЕсли;
+    Для crmN=1 По crmChanges.РазмерСписка() Цикл
+        crmAgreementRef=crmChanges.ПолучитьЗначение(crmN); crmOwner=crmChangeOwners.ПолучитьЗначение(crmN);
+        Если crmCheckAgreementTitle(crmAgreementRef,crmOwner,crmLegacyTitle,crmTitle)<>1 Тогда
+            ОтменитьТранзакцию(); crmTransaction=0;
+            Предупреждение("Договор расчётов изменился. Переименование отменено."); Возврат 0;
+        КонецЕсли;
+        crmRef=СоздатьОбъект("Справочник.Договоры"); crmRef.НайтиЭлемент(crmAgreementRef);
+        crmRef.Наименование=crmTitle; crmRef.Записать(); crmRef.НайтиЭлемент(crmAgreementRef);
+        Если (СокрЛП(crmRef.Наименование)<>crmTitle) Или (crmRef.Владелец<>crmOwner) Тогда
+            ОтменитьТранзакцию(); crmTransaction=0;
+            Предупреждение("Не прошла проверка нового названия. Изменения отменены."); Возврат 0;
+        КонецЕсли;
+    КонецЦикла;
+    ЗафиксироватьТранзакцию(); crmTransaction=0;
+    Сообщить("CRM: основания переименованы в "+crmTitle+". Документы и проводки не перепроводились, ссылки не менялись.");
+    Возврат 1;
+КонецФункции
+
+Функция crmAgreement(crmOwner,crmID,crmTitle)
+    crmRef=СоздатьОбъект("Справочник.Договоры"); crmRef.ИспользоватьВладельца(crmOwner);
+    crmLegacyTitle="CRM "+crmID;
+    Если crmRef.НайтиПоНаименованию(crmLegacyTitle,0)=1 Тогда
+        crmAgreementRef=crmRef.ТекущийЭлемент();
+        Если crmCheckAgreementTitle(crmAgreementRef,crmOwner,crmLegacyTitle,crmTitle)<>1 Тогда Возврат -1; КонецЕсли;
+        crmRef.Наименование=crmTitle; crmRef.Записать();
         Возврат crmRef.ТекущийЭлемент();
     КонецЕсли;
-    Если СтрДлина(crmText)>Метаданные.Справочник("Договоры").ДлинаНаименования Тогда
-        crmFailure=1/0;
+    Если crmRef.НайтиПоНаименованию(crmTitle,0)=1 Тогда
+        Если crmRef.ПометкаУдаления()=1 Тогда Предупреждение("Договор расчётов помечен на удаление."); Возврат -1; КонецЕсли;
+        Возврат crmRef.ТекущийЭлемент();
     КонецЕсли;
-    crmRef.Новый(); crmRef.Наименование=crmText;
+    Если СтрДлина(crmTitle)>Метаданные.Справочник("Договоры").ДлинаНаименования Тогда
+        Предупреждение("Название договора расчётов длиннее допустимого."); Возврат -1;
+    КонецЕсли;
+    crmRef.Новый(); crmRef.Наименование=crmTitle;
     crmRef.Комиссия=1; crmRef.ОплатаДоговора=1;
     crmRef.Записать();
     Возврат crmRef.ТекущийЭлемент();
@@ -195,7 +274,8 @@
     crmFound=crmExisting(crmID);
     Если crmError(crmFound)=1 Тогда Возврат; КонецЕсли;
     Если ПустоеЗначение(crmFound)=0 Тогда
-        Сообщить("CRM: заявка уже существует: "+Строка(crmFound)+". Новая не создана, существующая не изменена.");
+        Если crmRenameAgreementTitles(crmFound,crmID)=0 Тогда Возврат; КонецЕсли;
+        Сообщить("CRM: заявка уже существует: "+Строка(crmFound)+". Новая не создана, денежные документы не изменялись.");
         Возврат;
     КонецЕсли;
     crmCustomerNode=crmNode.ВыбратьУзел("CUSTOMER");
@@ -282,8 +362,13 @@
     crmDoc.Плательщик=crmCustomer; crmDoc.ТурОператор=crmOperator;
     crmDoc.Тур=crmTour; crmDoc.Направление=crmTour.Направление;
     crmStage="Договоры расчётов";
-    crmDoc.ДоговорПлательщика=crmAgreement(crmCustomer,crmID);
-    crmDoc.ДоговорОператора=crmAgreement(crmOperator,crmID);
+    crmTitle=crmAgreementTitle(crmDoc);
+    crmPayAgreement=crmAgreement(crmCustomer,crmID,crmTitle);
+    Если crmError(crmPayAgreement)=1 Тогда ОтменитьТранзакцию(); crmTransaction=0; Возврат; КонецЕсли;
+    crmOperatorAgreement=crmAgreement(crmOperator,crmID,crmTitle);
+    Если crmError(crmOperatorAgreement)=1 Тогда ОтменитьТранзакцию(); crmTransaction=0; Возврат; КонецЕсли;
+    crmDoc.ДоговорПлательщика=crmPayAgreement;
+    crmDoc.ДоговорОператора=crmOperatorAgreement;
     crmDoc.Валюта=crmRub; crmDoc.Курс=1;
     crmDoc.Статус=Перечисление.СтатусыЗаявок.Введена;
     crmDoc.Примечания="Договор CRM №"+crmNode.ПолучитьАтрибут("NUMBER")+" от "+crmDateText+РазделительСтрок+"Ключ CRM: "+crmID;
