@@ -1,0 +1,23 @@
+{% extends 'crm/base.html' %}
+{% block title %}Тестовая выгрузка в 1С · CRM{% endblock %}
+{% block content %}
+<a href="{% url 'admin:index' %}">← Справочники и управление</a>
+<h1>Тестовая выгрузка в 1С</h1>
+<article class="section-card">
+<h2>Подготовка к проверке</h2>
+<p>Пакет для сверки договоров и клиентских операций. Загрузка в 1С пока не подключена. Файлы этого пакета не подходят для штатной обработки САМО.</p>
+<p>Выберите до 20 договоров. В пакет попадут суммы, ФИО заказчика, туроператор и клиентские операции выбранного года. Для определения даты отгрузки учитывается вся история оплат договора.</p>
+<form method="get" class="field-grid">
+<label>Год <input name="year" type="number" min="1900" max="2100" value="{{ year }}"></label>
+<label>Номер договора <input name="q" maxlength="100" value="{{ query }}"></label>
+<div><button>Найти договоры</button></div>
+</form>
+<p class="muted">Показаны первые 20 договоров по дате. Для другого договора воспользуйтесь поиском по номеру. Зачёт проверяйте, выбрав оба договора.</p>
+<form method="post">{% csrf_token %}
+{{ form.non_field_errors }}
+{{ form.year.as_field_group }}
+{{ form.contracts.as_field_group }}
+<button type="submit">Скачать тестовый пакет</button>
+</form>
+</article>
+{% endblock %}

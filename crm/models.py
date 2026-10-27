@@ -28,6 +28,7 @@ class DefaultReference(models.Model):
             constraint.validate(type(self),self,exclude=exclude)
 
 class Customer(DefaultReference):
+    exchange_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     kind=models.CharField('Тип заказчика',max_length=10,choices=[('person','Физическое лицо'),('company','Юридическое лицо')],default='person')
     company_name=models.CharField('Наименование организации',max_length=250,blank=True)
     inn=models.CharField('ИНН',max_length=12,blank=True)
@@ -117,6 +118,7 @@ class FuelSurcharge(NamedReference):
         verbose_name='Топливный сбор'; verbose_name_plural='Топливные сборы'
 
 class Operator(DefaultReference):
+    exchange_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     name = models.CharField('Название',max_length=200,unique=True)
     booking_url_template = models.CharField('Шаблон ссылки на бронь',max_length=1500,blank=True,help_text='Полная ссылка с https:// и {booking} вместо номера. Можно также адрес, заканчивающийся на = или / — номер добавится в конец. Пример: https://agency.pegast.ru/MyAccount/Bookings/?bi={booking}')
     def clean(self):
@@ -158,6 +160,7 @@ class Tourist(DefaultReference):
     def __str__(self): return self.name
 
 class Contract(models.Model):
+    exchange_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     legacy_amount_adjustment=models.DecimalField('Расхождение шапки и строк старого договора',max_digits=14,decimal_places=2,default=0,editable=False)
     opening_operator_paid=models.DecimalField('Перечислено ТО в старой CRM, за вычетом возвратов',max_digits=14,decimal_places=2,default=0,editable=False)
     legacy_customer_snapshot=models.JSONField(default=dict,blank=True,editable=False)
@@ -244,6 +247,7 @@ class ContractLine(models.Model):
     class Meta: verbose_name='Строка договора'; verbose_name_plural='Строки договора'
 
 class Payment(models.Model):
+    exchange_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     legacy_payer=models.ForeignKey(Customer,on_delete=models.PROTECT,null=True,blank=True,related_name='legacy_payments',editable=False,verbose_name='Плательщик в старой CRM')
     KINDS=[('customer','Поступление от клиента'),('customer_refund','Возврат клиенту'),('operator','Оплата ТО'),('operator_refund','Возврат от ТО')]
     contract = models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='payments',verbose_name='Договор')

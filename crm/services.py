@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 from django.db import transaction
 from .models import Task, TaskTemplate, Contract
@@ -47,6 +48,7 @@ def copy_contract(source):
     from django.utils import timezone
     copy = Contract.objects.get(pk=source.pk)
     copy.pk = None
+    copy.exchange_id = uuid.uuid4()
     copy.number = ''
     copy.tourvisor_id = None
     copy.tourvisor_time = ''
