@@ -1,5 +1,6 @@
 """Administrator-only test export; never writes business records or connects to 1C."""
 import io
+import re
 from django import forms
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -39,17 +40,34 @@ def page(request):
     except ValueError:
         year = 2026
     year = max(1900, min(year, 2100))
-    query = request.GET.get('q', '').strip()[:100]
+    data = request.POST if request.method == 'POST' else request.GET
+    query = data.get('q', '').strip()[:100]
+    # Selection travels with the search form, so another number never drops
+    # previously selected contracts. Keep it scoped to this page, not a session.
+    selected = data.getlist('contracts') if not data.get('clear') else []
+    selected_ids = [int(value) for value in selected[:100]
+                    if value.isdecimal() and len(value) <= 18]
     queryset = with_financials(Contract.objects.select_related('customer'))
     queryset = queryset.filter(Q(date__year=year) | Q(pk__in=Payment.objects.filter(
         date__year=year, kind__in=['customer', 'customer_refund']).values('contract_id')))
+    results = queryset
     if query:
-        # Search is deliberately by contract number; no passport/contact fields needed.
-        queryset = queryset.filter(number__icontains=query)
-    candidates = list(queryset.order_by('-date', '-pk')[:20])
+        numbers = [value.strip() for value in re.split(r'[,;\n]+', query) if value.strip()]
+        if len(numbers) > 1:
+            # Explicit multiple numbers are exact, avoiding unrelated substring matches.
+            results = results.filter(number__in=numbers)
+        else:
+            results = results.filter(number__icontains=query)
+    selected_contracts = list(queryset.filter(pk__in=selected_ids).order_by('-date', '-pk'))
+    candidates = list(results.order_by('-date', '-pk')[:20])
+    selected_keys = {c.pk for c in selected_contracts}
+    candidates = selected_contracts + [c for c in candidates if c.pk not in selected_keys]
     choices = [(str(c.pk), f'{c.number or c.pk} · {c.date:%d.%m.%Y} · {c.customer.name} · {c.amount:,.2f} ₽') for c in candidates]
-    form = TestExportForm(request.POST if request.method == 'POST' else None,
-                          choices=choices, initial={'year': year})
+    form_data = None
+    if request.method == 'POST' or selected:
+        form_data = data.copy()
+        form_data.setlist('contracts', selected)
+    form = TestExportForm(form_data, choices=choices, initial={'year': year})
     if request.method == 'POST' and form.is_valid():
         try:
             with transaction.atomic():
@@ -63,4 +81,5 @@ def page(request):
             response['X-Content-Type-Options'] = 'nosniff'
             response['Cache-Control'] = 'private, no-store'
             return response
-    return render(request, 'crm/one_c_export.html', {'form': form, 'year': year, 'query': query})
+    return render(request, 'crm/one_c_export.html', {'form': form, 'year': year, 'query': query,
+        'selected_count': len(selected_keys)})

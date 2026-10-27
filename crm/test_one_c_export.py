@@ -159,6 +159,55 @@ class OneCExportTests(TestCase):
         csrf=Client(enforce_csrf_checks=True);csrf.force_login(admin)
         self.assertEqual(csrf.post(url,{'year':2026,'contracts':[self.contract.pk]}).status_code,403)
 
+    def test_web_selection_survives_search_and_exports_offset_across_old_contracts(self):
+        admin = get_user_model().objects.create_superuser('selection-admin', '', 'test')
+        self.client.force_login(admin)
+        source = self.contract
+        source.date = date(2026, 3, 1); source.save()
+        target = self.make_contract('JUNE-42')
+        target.date = date(2026, 6, 1); target.save()
+        for index in range(21):
+            newer = self.make_contract(f'LATEST-{index}')
+            newer.date = date(2026, 10, 1); newer.save()
+        self.pay(method='Зачет', amount=10000, kind='customer_refund', contract=source)
+        self.pay(method='Зачет', amount=10000, contract=target)
+        url = '/management/1c/'
+        initial = self.client.get(url, {'year': 2026})
+        self.assertNotIn(str(source.pk), dict(initial.context['form'].fields['contracts'].choices))
+        searched = self.client.get(url, {'year': 2026, 'q': 'JUNE-42', 'contracts': [source.pk]})
+        form = searched.context['form']
+        self.assertEqual(set(dict(form.fields['contracts'].choices)), {str(source.pk), str(target.pk)})
+        self.assertEqual(form['contracts'].value(), [str(source.pk)])
+        response = self.client.post(url, {'year': 2026, 'q': 'JUNE-42', 'contracts': [source.pk, target.pk]})
+        self.assertEqual(response['Content-Type'], 'application/zip')
+        with ZipFile(io.BytesIO(b''.join(response.streaming_content))) as archive:
+            root = ET.fromstring(archive.read('exchange.xml'))
+        self.assertEqual(len(root.findall('CONTRACT')), 2)
+        offset = root.find('OPERATIONS/OPERATION')
+        self.assertEqual(offset.get('TYPE'), 'offset')
+        self.assertEqual(offset.get('DEBIT_CONTRACT'), str(source.exchange_id))
+        self.assertEqual(offset.get('CREDIT_CONTRACT'), str(target.exchange_id))
+
+    def test_web_multiple_numbers_clear_and_year_scope(self):
+        admin = get_user_model().objects.create_superuser('multi-admin', '', 'test')
+        self.client.force_login(admin)
+        other = self.make_contract('TEST-2')
+        similar = self.make_contract('TEST-20')
+        outside = self.make_contract('OLD')
+        outside.date = date(2025, 1, 1); outside.save()
+        url = '/management/1c/'
+        response = self.client.get(url, {'year': 2026, 'q': 'TEST-1, TEST-2'})
+        self.assertEqual(set(dict(response.context['form'].fields['contracts'].choices)),
+                         {str(self.contract.pk), str(other.pk)})
+        cleared = self.client.get(url, {'year': 2026, 'q': 'TEST-2', 'contracts': [self.contract.pk], 'clear': 1})
+        self.assertEqual(set(dict(cleared.context['form'].fields['contracts'].choices)),
+                         {str(other.pk), str(similar.pk)})
+        self.assertEqual(cleared.context['selected_count'], 0)
+        rejected = self.client.post(url, {'year': 2026, 'contracts': [outside.pk]})
+        self.assertEqual(rejected.status_code, 200)
+        self.assertTrue(rejected.context['form'].errors)
+        self.assertNotEqual(rejected.get('Content-Type'), 'application/zip')
+
     def test_ids_are_distinct_between_objects_and_survive_changes(self):
         other=self.make_contract('OTHER')
         self.assertNotEqual(self.contract.exchange_id,other.exchange_id)

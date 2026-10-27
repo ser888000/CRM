@@ -7,17 +7,39 @@
 <h2>Подготовка к проверке</h2>
 <p>Пакет для сверки договоров и клиентских операций. Загрузка в 1С пока не подключена. Файлы этого пакета не подходят для штатной обработки САМО.</p>
 <p>Выберите до 20 договоров. В пакет попадут суммы, ФИО заказчика, туроператор и клиентские операции выбранного года. Для определения даты отгрузки учитывается вся история оплат договора.</p>
-<form method="get" class="field-grid">
-<label>Год <input name="year" type="number" min="1900" max="2100" value="{{ year }}"></label>
-<label>Номер договора <input name="q" maxlength="100" value="{{ query }}"></label>
-<div><button>Найти договоры</button></div>
-</form>
-<p class="muted">Показаны первые 20 договоров по дате. Для другого договора воспользуйтесь поиском по номеру. Зачёт проверяйте, выбрав оба договора.</p>
-<form method="post">{% csrf_token %}
+<form method="post" id="one-c-export-form">{% csrf_token %}
 {{ form.non_field_errors }}
-{{ form.year.as_field_group }}
+<div class="field-grid">
+<div>{{ form.year.as_field_group }}</div>
+<label>Номер договора <input name="q" maxlength="100" value="{{ query }}" placeholder="Один номер или несколько через запятую"></label>
+<div><button type="submit" formmethod="get">Найти договоры</button></div>
+</div>
+<p class="muted">Отметьте договор, затем найдите следующий — отметки сохранятся. Можно искать несколько номеров через запятую. Показаны до 20 результатов поиска и все ранее выбранные договоры.</p>
+<p>Выбрано: <span id="one-c-selected-count">{{ selected_count }}</span>. Для зачёта отметьте оба договора и скачайте один общий пакет.</p>
 {{ form.contracts.as_field_group }}
+<div class="form-actions">
 <button type="submit">Скачать тестовый пакет</button>
+<button type="submit" formmethod="get" name="clear" value="1">Снять все отметки</button>
+</div>
 </form>
 </article>
+<script>
+(() => {
+    const form = document.getElementById('one-c-export-form');
+    const counter = document.getElementById('one-c-selected-count');
+    const updateCount = () => {
+        counter.textContent = form.querySelectorAll('input[name="contracts"]:checked').length;
+    };
+    form.addEventListener('change', updateCount);
+    updateCount();
+    form.addEventListener('submit', event => {
+        // Search uses GET; keep the CSRF token out of its URL.
+        if (event.submitter && event.submitter.getAttribute('formmethod') === 'get') {
+            const token = form.querySelector('input[name="csrfmiddlewaretoken"]');
+            token.disabled = true;
+            setTimeout(() => { token.disabled = false; }, 0);
+        }
+    });
+})();
+</script>
 {% endblock %}
