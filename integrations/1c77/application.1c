@@ -4,11 +4,12 @@
 Перем crmTransaction,crmStage;
 
 Функция crmName(crmText)
-    crmText=НРег(СокрЛП(СтрЗаменить(crmText," "," ")));
-    Пока Найти(crmText,"  ")>0 Цикл
-        crmText=СтрЗаменить(crmText,"  "," ");
+    // Параметры 7.7 передаются по ссылке: изменяем только локальную копию.
+    crmNormalized=НРег(СокрЛП(СтрЗаменить(crmText," "," ")));
+    Пока Найти(crmNormalized,"  ")>0 Цикл
+        crmNormalized=СтрЗаменить(crmNormalized,"  "," ");
     КонецЦикла;
-    Возврат crmText;
+    Возврат crmNormalized;
 КонецФункции
 
 Функция crmUUID(crmText)
