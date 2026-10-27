@@ -30,7 +30,11 @@ def build(donor, output, application=False, voucher=False, shipment=False):
     module = ('shipment.1c' if shipment else 'voucher.1c' if voucher else
               'application.1c' if application else 'probe.1c')
     source = Path(__file__).resolve().parents[1] / 'integrations/1c77' / module
-    text = source.read_text().replace('\r\n', '\n').replace('\n', '\r\n').encode('cp1251')
+    source_text = source.read_text()
+    if application or voucher or shipment:
+        common = (source.parent / 'application_services.1c').read_text()
+        source_text = source_text.replace('\nФункция ', '\n' + common + '\nФункция ', 1)
+    text = source_text.replace('\r\n', '\n').replace('\n', '\r\n').encode('cp1251')
     compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
     module = compressor.compress(text) + compressor.flush()
     with olefile.OleFileIO(donor) as original:

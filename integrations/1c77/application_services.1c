@@ -1,0 +1,33 @@
+// Штатная форма заявки создаёт такой служебный документ даже без строк услуг.
+// Он также нужен логике 1С при закрытии единственной путёвки.
+// Вызывать внутри транзакции основной операции.
+Функция crmEnsureApplicationServices(crmApplication)
+    crmServicesSearch=СоздатьОбъект("Документ");
+    crmServicesSearch.ВыбратьПодчиненныеДокументы(,,crmApplication);
+    crmServicesCount=0; crmServicesDeleted=0;
+    Пока crmServicesSearch.ПолучитьДокумент()=1 Цикл
+        Если crmServicesSearch.Вид()="УслугиПоЗаявке" Тогда
+            crmServicesCount=crmServicesCount+1;
+            Если crmServicesSearch.ПометкаУдаления()=1 Тогда crmServicesDeleted=1; КонецЕсли;
+        КонецЕсли;
+    КонецЦикла;
+    Если (crmServicesCount>1) Или (crmServicesDeleted=1) Тогда
+        Предупреждение("Проверьте связанные Услуги по заявке: есть дубли или пометка удаления. Автоматически не изменяются.");
+        Возврат 0;
+    КонецЕсли;
+    Если crmServicesCount=1 Тогда Возврат 1; КонецЕсли;
+    crmServicesParent=СоздатьОбъект("Документ.Заявка");
+    crmServicesParent.НайтиДокумент(crmApplication);
+    Если crmServicesParent.ПометкаУдаления()=1 Тогда Возврат 0; КонецЕсли;
+    crmServicesDoc=СоздатьОбъект("Документ.УслугиПоЗаявке");
+    crmServicesDoc.Новый(); crmServicesDoc.ДатаДок=crmServicesParent.ДатаДок;
+    crmServicesDoc.УстановитьНовыйНомер();
+    crmServicesDoc.Заявка=crmApplication;
+    crmServicesDoc.Валюта=crmServicesParent.Валюта; crmServicesDoc.Курс=crmServicesParent.Курс;
+    crmServicesDoc.Записать();
+    crmServicesCheck=СоздатьОбъект("Документ.УслугиПоЗаявке");
+    crmServicesCheck.НайтиДокумент(crmServicesDoc.ТекущийДокумент());
+    Если (crmServicesCheck.Заявка<>crmApplication) Или (crmServicesCheck.КоличествоСтрок()<>0) Тогда Возврат 0; КонецЕсли;
+    Сообщить("CRM: добавлен штатный служебный документ Услуги по заявке без строк и проводок.");
+    Возврат 1;
+КонецФункции

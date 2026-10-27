@@ -115,12 +115,14 @@
     Возврат crmLabel+": в 1С ["+Строка(crmActual)+"], ожидается ["+Строка(crmExpected)+"]."+РазделительСтрок;
 КонецФункции
 
-Функция crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate)
+Функция crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate,crmAllowEmptyStatus=0)
     crmIssues="";
     crmIssues=crmIssues+crmDifference("Заявка: пометка удаления",crmApp.ПометкаУдаления(),0);
     crmIssues=crmIssues+crmDifference("Заявка: проведена",crmApp.Проведен(),1);
     Если (crmApp.Статус<>Перечисление.СтатусыЗаявок.Оплата) И (crmApp.Статус<>Перечисление.СтатусыЗаявок.Оплачена) И (crmApp.Статус<>Перечисление.СтатусыЗаявок.Закрыта) Тогда
-        crmIssues=crmIssues+"Заявка: статус ["+Строка(crmApp.Статус)+"], ожидается Оплата, Оплачена или Закрыта."+РазделительСтрок;
+        Если (crmAllowEmptyStatus=0) Или (ПустоеЗначение(crmApp.Статус)=0) Тогда
+            crmIssues=crmIssues+"Заявка: статус ["+Строка(crmApp.Статус)+"], ожидается Оплата, Оплачена или Закрыта."+РазделительСтрок;
+        КонецЕсли;
     КонецЕсли;
     Если crmApp.ДатаДок>crmDate Тогда crmIssues=crmIssues+"Заявка: дата "+Строка(crmApp.ДатаДок)+" позже даты отгрузки "+Строка(crmDate)+"."+РазделительСтрок; КонецЕсли;
     Если crmApp.Валюта<>Рубль Тогда crmIssues=crmIssues+"Заявка: валюта не рублёвая."+РазделительСтрок; КонецЕсли;
@@ -219,7 +221,13 @@
     Если crmError(crmVoucherRef)=1 Тогда Возврат; КонецЕсли;
     crmApp=СоздатьОбъект("Документ.Заявка"); crmApp.НайтиДокумент(crmApplication);
     crmVoucherDoc=СоздатьОбъект("Документ.Путевка"); crmVoucherDoc.НайтиДокумент(crmVoucherRef);
-    crmIssues=crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate);
+    crmRepairStatus=0;
+    Если ПустоеЗначение(crmApp.Статус)=1 Тогда
+        Если (Найти(crmApp.Примечания,"Ключ CRM: "+crmID)>0) И (Найти(crmApp.Примечания,"Договор CRM №")>0) Тогда
+            crmRepairStatus=1;
+        КонецЕсли;
+    КонецЕсли;
+    crmIssues=crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate,crmRepairStatus);
     Если ПустаяСтрока(crmIssues)=0 Тогда
         Сообщить("CRM: сверка "+Строка(crmApplication)+" и "+Строка(crmVoucherRef));
         Сообщить(crmIssues);
@@ -232,16 +240,33 @@
     crmPrompt="Создать и провести одну отгрузку в тестовой базе?"+РазделительСтрок;
     crmPrompt=crmPrompt+Строка(crmApplication)+"; "+Строка(crmVoucherRef)+РазделительСтрок;
     crmPrompt=crmPrompt+"Дата: "+crmDateText+"; сумма: "+Строка(crmAmount)+"; комиссия целиком: "+Строка(crmCommission);
+    Если crmRepairStatus=1 Тогда
+        crmPrompt=crmPrompt+РазделительСтрок+"Пустой статус импортированной заявки будет восстановлен на Оплата, заявка перепроведена. Будут добавлены штатные Услуги по заявке, если их нет.";
+    КонецЕсли;
     Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
     crmStage="Создание отгрузки";
     НачатьТранзакцию(); crmTransaction=1;
     Если crmShipmentExists(crmApplication)>0 Тогда crmStop("Отгрузка уже существует. Повторное создание отменено."); Возврат; КонецЕсли;
     crmApp.НайтиДокумент(crmApplication); crmVoucherDoc.НайтиДокумент(crmVoucherRef);
-    crmIssues=crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate);
+    crmIssues=crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate,crmRepairStatus);
     Если ПустаяСтрока(crmIssues)=0 Тогда
         Сообщить(crmIssues);
         crmStop("Исходные документы изменились:"+РазделительСтрок+crmIssues); Возврат;
     КонецЕсли;
+    crmStage="Штатные услуги заявки и восстановление статуса";
+    Если crmEnsureApplicationServices(crmApplication)=0 Тогда crmStop("Не удалось подготовить штатные услуги заявки."); Возврат; КонецЕсли;
+    Если ПустоеЗначение(crmApp.Статус)=1 Тогда
+        Если (crmRepairStatus<>1) Или (Найти(crmApp.Примечания,"Ключ CRM: "+crmID)=0) Или (Найти(crmApp.Примечания,"Договор CRM №")=0) Тогда
+            crmStop("Пустой статус не относится к подтверждённой импортированной заявке. Восстановление отменено."); Возврат;
+        КонецЕсли;
+        crmApp.Статус=Перечисление.СтатусыЗаявок.Оплата;
+        crmApp.Записать(); crmApp.Провести();
+        crmApp.НайтиДокумент(crmApplication);
+        Сообщить("CRM: восстановлен пустой статус импортированной заявки на Оплата, заявка перепроведена.");
+    КонецЕсли;
+    crmIssues=crmSourceIssues(crmApp,crmVoucherDoc,crmAmount,crmCost,crmDate);
+    Если ПустаяСтрока(crmIssues)=0 Тогда crmStop("Не прошла проверка после восстановления:"+РазделительСтрок+crmIssues); Возврат; КонецЕсли;
+    crmStage="Заполнение отгрузки";
     crmShip=СоздатьОбъект("Документ.ОтгрузкаТурУслуг");
     crmShip.Новый(); crmShip.ДатаДок=crmDate; crmShip.УстановитьНовыйНомер();
     crmShip.Заявка=crmApplication;
@@ -262,7 +287,7 @@
     ЗафиксироватьТранзакцию(); crmTransaction=0;
     Сообщить("CRM: создана и проведена "+Строка(crmSaved)+" на основании "+Строка(crmApplication));
     Сообщить("CRM: дата отгрузки "+crmDateText+"; сумма "+Строка(crmAmount)+"; комиссия "+Строка(crmCommission));
-    Сообщить("CRM: заявка и путёвка не перепроводились, бланк повторно не списывался. Клиентские платежи пока не создавались.");
+    Сообщить("CRM: путёвка не перепроводилась, бланк повторно не списывался. Клиентские платежи пока не создавались.");
     Сообщить("CRM: проверьте проводки выручки по комиссии и налогового учёта. Повторите тот же договор для проверки отсутствия дубля.");
     crmStage="Просмотр отгрузки";
     ОткрытьФорму(crmSaved);
