@@ -59,6 +59,30 @@ class OneCExportTests(TestCase):
         self.assertEqual(plan['contracts'][0]['shipment_status'], 'requires_review')
         self.assertIsNone(plan['contracts'][0]['shipment_date'])
 
+    def test_cash_orders_keep_positive_document_sum_and_signed_source_in_xml(self):
+        receipt = self.pay(method='Касса чек', amount=80000)
+        refund = self.pay(method='Касса чек', amount=5000, kind='customer_refund', day=11)
+        plan = build_plan([self.contract.pk], 2026)
+        with ZipFile(io.BytesIO(package_bytes(plan))) as archive:
+            root = ET.fromstring(archive.read('exchange.xml'))
+        operations = root.findall('OPERATIONS/OPERATION')
+        self.assertEqual(len(operations), 2)
+        expected = [('cash_receipt', '50.1', '62.2', '80000.00', receipt),
+                    ('cash_refund', '62.2', '50.1', '5000.00', refund)]
+        for operation, (kind, debit, credit, amount, payment) in zip(operations, expected):
+            self.assertEqual(tuple(operation.get(key) for key in ('TYPE', 'DEBIT', 'CREDIT', 'AMOUNT')),
+                             (kind, debit, credit, amount))
+            self.assertEqual(operation.get('STATUS'), 'requires_cash_analytics')
+            self.assertEqual(operation.find('SOURCE_PAYMENT').get('ID'), str(payment.exchange_id))
+            self.assertEqual(operation.find('PAYER').get('ID'), str(self.customer.exchange_id))
+        source = root.find(f"CONTRACT/PAYMENT[@ID='{refund.exchange_id}']")
+        self.assertEqual(source.get('AMOUNT'), '-5000.00')
+        self.assertEqual(source.get('METHOD'), 'Касса чек')
+        self.assertEqual(source.get('STATUS'), 'planned')
+        # A cash refund must not invent automatic recognition/storno of commission.
+        self.assertEqual(plan['contracts'][0]['shipment_status'], 'requires_review')
+        self.assertEqual(plan['operations'], build_plan([self.contract.pk], 2026)['operations'])
+
     def test_offset_is_one_operation_with_both_contract_analytics(self):
         other = self.make_contract('TEST-2')
         source = self.pay(method='Зачет', amount=10000, kind='customer_refund')

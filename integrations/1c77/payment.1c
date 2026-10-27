@@ -1,5 +1,5 @@
-// Тест: одна ручная оплата картой/СБП или один подтверждённый зачёт.
-// Никаких выписок банка. Кассовые ордера требуют отдельного этапа проверки.
+// Тест: одна оплата картой/СБП, зачёт или штатный ПКО/РКО.
+// Никаких выписок банка. Основания берутся по ссылкам из заявок.
 Перем Connection,тзТипыКонтрагентов,тзМенеджеры,НадписьИнф,ГруппаCRM;
 Перем crmTransaction,crmStage;
 
@@ -115,6 +115,13 @@
         Предупреждение("Сумма, дата или плательщик операции не совпали с исходной оплатой XML."); Возврат 0;
     КонецЕсли;
     crmMethod=crmPayment.ПолучитьАтрибут("METHOD");
+    crmPaymentType=crmOperation.ПолучитьАтрибут("TYPE");
+    Если (crmPaymentType="cash_receipt") Или (crmPaymentType="cash_refund") Тогда
+        Если (crmMethod<>"Касса чек") Или (crmPayment.ПолучитьАтрибут("STATUS")<>"planned") Тогда
+            Предупреждение("Для ПКО/РКО нужна разрешённая оплата Касса чек."); Возврат 0;
+        КонецЕсли;
+        Возврат 1;
+    КонецЕсли;
     Если crmOffset=1 Тогда
         Если crmPayment.ПолучитьАтрибут("STATUS")<>"offset_proposed" Тогда Предупреждение("Пара зачёта не подтверждена планом выгрузки."); Возврат 0; КонецЕсли;
         Если (crmMethod<>"Зачет") И (crmMethod<>"Зачёт") Тогда Предупреждение("Исходная оплата не является зачётом."); Возврат 0; КонецЕсли;
@@ -130,23 +137,40 @@
     Возврат 1;
 КонецФункции
 
+Функция crmHasPaymentMarker(crmComment,crmID,crmSources)
+    Если Найти(crmComment,"[CRM_OP:"+crmID+"]")>0 Тогда Возврат 1; КонецЕсли;
+    Для crmN=0 По crmSources.КоличествоУзлов-1 Цикл
+        crmSourceID=crmSources.ПолучитьУзел(crmN).ПолучитьАтрибут("ID");
+        Если Найти(crmComment,"[CRM_PAYMENT:"+crmSourceID+"]")>0 Тогда Возврат 1; КонецЕсли;
+    КонецЦикла;
+    Возврат 0;
+КонецФункции
+
 Функция crmAlreadyImported(crmID,crmSources)
-    // У ручной Операции нет реквизита Идентификатор. Метки хранятся в комментарии.
-    // Проверяем всю историю, в том числе если у существующей оплаты изменили дату.
+    // Вся история, включая изменённые даты. Кассовые документы ищем отдельно:
+    // у непроведённого/помеченного ордера может не быть бухгалтерской операции.
     crmSearch=СоздатьОбъект("Операция"); crmSearch.ВыбратьОперации(); crmCount=0;
     Пока crmSearch.ПолучитьОперацию()=1 Цикл
         Если crmSearch.Документ.Вид()="Операция" Тогда
-            crmComment=crmSearch.Документ.Комментарий;
-            crmMatch=?(Найти(crmComment,"[CRM_OP:"+crmID+"]")>0,1,0);
-            Для crmN=0 По crmSources.КоличествоУзлов-1 Цикл
-                crmSourceID=crmSources.ПолучитьУзел(crmN).ПолучитьАтрибут("ID");
-                Если Найти(crmComment,"[CRM_PAYMENT:"+crmSourceID+"]")>0 Тогда crmMatch=1; КонецЕсли;
-            КонецЦикла;
-            Если crmMatch=1 Тогда
+            Если crmHasPaymentMarker(crmSearch.Документ.Комментарий,crmID,crmSources)=1 Тогда
                 crmCount=crmCount+1;
-                Сообщить("CRM: исходная оплата уже связана с "+Строка(crmSearch.Документ)+". Повторно не создаётся; существующая не изменяется.");
+                Сообщить("CRM: оплата уже связана с "+Строка(crmSearch.Документ)+". Повторно не создаётся; существующая не изменяется.");
             КонецЕсли;
         КонецЕсли;
+    КонецЦикла;
+    Для crmKind=1 По 2 Цикл
+        crmCashSearch=СоздатьОбъект("Документ."+?(crmKind=1,"ПриходныйОрдер","РасходныйОрдер"));
+        crmCashSearch.ВыбратьДокументы();
+        Пока crmCashSearch.ПолучитьДокумент()=1 Цикл
+            crmMatch=crmHasPaymentMarker(crmCashSearch.Комментарий,crmID,crmSources);
+            Если crmKind=1 Тогда
+                Если СокрЛП(crmCashSearch.Идентификатор)=crmID Тогда crmMatch=1; КонецЕсли;
+            КонецЕсли;
+            Если crmMatch=1 Тогда
+                crmCount=crmCount+1;
+                Сообщить("CRM: оплата уже связана с "+Строка(crmCashSearch.ТекущийДокумент())+"; проведён: "+Строка(crmCashSearch.Проведен())+"; удалён: "+Строка(crmCashSearch.ПометкаУдаления())+". Новая не создаётся.");
+            КонецЕсли;
+        КонецЦикла;
     КонецЦикла;
     Возврат crmCount;
 КонецФункции
@@ -166,6 +190,94 @@
     Возврат crmValues;
 КонецФункции
 
+Процедура crmImportCash(crmRoot,crmNode,crmSources,crmDate,crmAmount)
+    crmStage="Проверка кассовой оплаты";
+    crmType=crmNode.ПолучитьАтрибут("TYPE"); crmReceipt=?(crmType="cash_receipt",1,0);
+    crmID=crmNode.ПолучитьАтрибут("ID"); crmContractID=crmNode.ПолучитьАтрибут("CONTRACT");
+    crmDebit=?(crmReceipt=1,"50.1","62.2"); crmCredit=?(crmReceipt=1,"62.2","50.1");
+    Если (crmAmount<=0) Или (crmNode.ПолучитьАтрибут("DEBIT")<>crmDebit) Или (crmNode.ПолучитьАтрибут("CREDIT")<>crmCredit) Или (crmNode.ПолучитьАтрибут("STATUS")<>"requires_cash_analytics") Тогда
+        crmStop("Не подтверждена схема кассового ордера."); Возврат;
+    КонецЕсли;
+    crmPayer=crmNode.ВыбратьУзел("PAYER");
+    Если ПустоеЗначение(crmPayer)=1 Тогда crmStop("Не указан плательщик кассовой оплаты."); Возврат; КонецЕсли;
+    crmSourceID=crmSources.ПолучитьУзел(0).ПолучитьАтрибут("ID");
+    crmExpected=?(crmReceipt=1,crmAmount,-crmAmount);
+    Если crmValidatePayment(crmRoot,crmNode,crmContractID,crmSourceID,crmPayer,crmExpected,0)=0 Тогда Возврат; КонецЕсли;
+    crmApplication=crmApplicationForPayment(crmRoot,crmContractID,crmPayer);
+    Если crmError(crmApplication)=1 Тогда Возврат; КонецЕсли;
+    Если crmAlreadyImported(crmID,crmSources)>0 Тогда Возврат; КонецЕсли;
+    crmApp=СоздатьОбъект("Документ.Заявка"); crmApp.НайтиДокумент(crmApplication);
+    crmCustomer=crmApp.Плательщик; crmAgreement=crmApp.ДоговорПлательщика; crmCurrency=crmApp.Валюта;
+    Если (crmAgreement.Комиссия<>1) Или (ПустоеЗначение(crmCurrency)=1) Или (crmCurrency<>Рубль) Или (crmApp.Курс<>1) Тогда crmStop("Для кассового теста нужны комиссионное основание и валюта заявки."); Возврат; КонецЕсли;
+    crmCashAccount=СчетПоКоду("50.1"); crmClientAccount=СчетПоКоду("62.2");
+    Если (ПустоеЗначение(crmCashAccount)=1) Или (ПустоеЗначение(crmClientAccount)=1) Тогда crmStop("Не найдены счета 50.1/62.2."); Возврат; КонецЕсли;
+    Если (crmClientAccount.КоличествоСубконто()<2) Или (crmClientAccount.ВидСубконто(1)<>ВидыСубконто.Контрагенты) Или (crmClientAccount.ВидСубконто(2)<>ВидыСубконто.Договоры) Или (crmCashAccount.КоличествоСубконто()<>1) Тогда
+        crmStop("Не совпала ожидаемая аналитика счетов кассы/клиента."); Возврат;
+    КонецЕсли;
+    crmStage="Выбор движения денежных средств кассы";
+    crmAnalytics=crmSelectDebitAnalytics(crmCashAccount);
+    Если crmError(crmAnalytics)=1 Тогда Возврат; КонецЕсли;
+    crmMovement=crmAnalytics.ПолучитьЗначение(1);
+    crmKind=?(crmReceipt=1,"ПриходныйОрдер","РасходныйОрдер");
+    crmPrompt="Создать и провести один "+?(crmReceipt=1,"ПКО","РКО")+" в тестовой базе?"+РазделительСтрок;
+    crmPrompt=crmPrompt+Формат(crmDate,"Д ДД.ММ.ГГГГ")+"; Дт "+crmDebit+" / Кт "+crmCredit+"; сумма "+Строка(crmAmount)+РазделительСтрок;
+    crmPrompt=crmPrompt+Строка(crmApplication)+"; "+Строка(crmCustomer)+"; "+Строка(crmAgreement)+РазделительСтрок;
+    crmPrompt=crmPrompt+"Движение денег: "+Строка(crmMovement)+РазделительСтрок+"Проверим штатные проводки: без повторного начисления выручки и налогового дохода.";
+    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    НачатьТранзакцию(); crmTransaction=1;
+    crmStage="Повторная проверка кассовой оплаты";
+    Если crmAlreadyImported(crmID,crmSources)>0 Тогда crmStop("Кассовая оплата уже существует."); Возврат; КонецЕсли;
+    crmRechecked=crmApplicationForPayment(crmRoot,crmContractID,crmPayer);
+    Если crmError(crmRechecked)=1 Тогда crmStop("Не прошла повторная проверка заявки."); Возврат; КонецЕсли;
+    crmApp.НайтиДокумент(crmApplication);
+    Если (crmRechecked<>crmApplication) Или (crmApp.Плательщик<>crmCustomer) Или (crmApp.ДоговорПлательщика<>crmAgreement) Или (crmApp.Валюта<>crmCurrency) Или (crmAgreement.Комиссия<>1) Тогда crmStop("Заявка или комиссионное основание изменились."); Возврат; КонецЕсли;
+    crmStage="Заполнение нового кассового ордера";
+    crmCash=СоздатьОбъект("Документ."+crmKind); crmCash.Новый(); crmCash.ДатаДок=crmDate; crmCash.УстановитьНовыйНомер();
+    crmCash.КоррСчет=crmClientAccount;
+    Для crmN=1 По 3 Цикл crmCash.НазначитьТип("Субконто"+Строка(crmN),crmClientAccount.ВидСубконто(crmN)); КонецЦикла;
+    crmCash.Субконто1=crmCustomer; crmCash.Субконто2=crmAgreement;
+    crmCash.Сумма=crmAmount; crmCash.Валютный=1; crmCash.Валюта=crmCurrency; crmCash.КурсОплаты=1;
+    crmCash.ФормироватьПроводки=1; crmCash.ДвижениеДенежныхСредств=crmMovement;
+    // ДляНУ остаётся пустым: штатное комиссионное основание исключает повторный доход.
+    // Возврат налогооблагаемого дохода здесь отдельно не придумываем.
+    crmCash.Основание=?(crmReceipt=1,"Оплата по ","Возврат по ")+Строка(crmApplication);
+    crmContract=crmContractNode(crmRoot,crmContractID);
+    crmCash.Приложение="Договор CRM №"+crmContract.ПолучитьАтрибут("NUMBER");
+    crmCash.Комментарий="[CRM_OP:"+crmID+"]"+РазделительСтрок+"[CRM_PAYMENT:"+crmSourceID+"]";
+    Если crmReceipt=1 Тогда
+        crmCash.ПринятоОт=crmPayer.ПолучитьАтрибут("NAME"); crmCash.Идентификатор=crmID;
+        crmCash.ВерсияОбъекта=Константа.НомерРелиза; crmCash.РозничнаяВыручка=0;
+    Иначе
+        crmCash.Выдать=crmPayer.ПолучитьАтрибут("NAME");
+    КонецЕсли;
+    crmStage="Сохранение кассового ордера"; crmCash.Записать(); crmSaved=crmCash.ТекущийДокумент();
+    crmStage="Штатное проведение кассового ордера"; crmCash.Провести(); crmCash.НайтиДокумент(crmSaved);
+    Если (crmCash.Проведен()<>1) Или (crmCash.ПометкаУдаления()=1) Или (crmCash.Сумма<>crmAmount) Или (crmCash.ДатаДок<>crmDate) Или (crmCash.Субконто1<>crmCustomer) Или (crmCash.Субконто2<>crmAgreement) Или (crmHasPaymentMarker(crmCash.Комментарий,crmID,crmSources)<>1) Тогда
+        crmStop("Не прошла проверка проведённого кассового ордера. Изменения отменены."); Возврат;
+    КонецЕсли;
+    crmStage="Проверка бухгалтерских проводок кассового ордера";
+    crmVerify=СоздатьОбъект("Операция");
+    Если crmVerify.НайтиОперацию(crmSaved)<>1 Тогда crmStop("Не найдена бухгалтерская операция ордера."); Возврат; КонецЕсли;
+    crmVerify.ВыбратьПроводки(); crmTotal=0; crmCount=0;
+    Пока crmVerify.ПолучитьПроводку()=1 Цикл
+        crmCount=crmCount+1;
+        Если (crmVerify.Дебет.Счет<>СчетПоКоду(crmDebit)) Или (crmVerify.Кредит.Счет<>СчетПоКоду(crmCredit)) Или (crmVerify.Сумма<=0) Тогда
+            crmStop("Штатное проведение сформировало неожиданные проводки (включая возможный налоговый доход). Ордер отменён."); Возврат;
+        КонецЕсли;
+        Если crmReceipt=1 Тогда
+            Если (crmVerify.Дебет.Субконто(1)<>crmMovement) Или (crmVerify.Кредит.Субконто(1)<>crmCustomer) Или (crmVerify.Кредит.Субконто(2)<>crmAgreement) Тогда crmStop("Не совпала аналитика ПКО."); Возврат; КонецЕсли;
+        Иначе
+            Если (crmVerify.Кредит.Субконто(1)<>crmMovement) Или (crmVerify.Дебет.Субконто(1)<>crmCustomer) Или (crmVerify.Дебет.Субконто(2)<>crmAgreement) Тогда crmStop("Не совпала аналитика РКО."); Возврат; КонецЕсли;
+        КонецЕсли;
+        crmTotal=crmTotal+crmVerify.Сумма;
+    КонецЦикла;
+    Если (crmCount=0) Или (crmTotal<>crmAmount) Тогда crmStop("Сумма проводок ордера не совпала с оплатой."); Возврат; КонецЕсли;
+    ЗафиксироватьТранзакцию(); crmTransaction=0;
+    Сообщить("CRM: создан и проведён "+Строка(crmSaved)+"; Дт "+crmDebit+" / Кт "+crmCredit+"; сумма "+Строка(crmAmount));
+    Сообщить("CRM: доход повторно не начислялся. Проверьте ордер и повторите эту оплату для проверки отсутствия дубля.");
+    crmStage="Просмотр кассового ордера"; ОткрытьФорму(crmSaved);
+КонецПроцедуры
+
 Процедура crmImportPayment()
     Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда Предупреждение("Не найдена V7Plus.dll."); Возврат; КонецЕсли;
     crmXML=СоздатьОбъект("AddIn.XMLParser");
@@ -184,13 +296,13 @@
     crmList=СоздатьОбъект("СписокЗначений");
     Для crmN=0 По crmOperations.КоличествоУзлов-1 Цикл
         crmNode=crmOperations.ПолучитьУзел(crmN); crmType=crmNode.ПолучитьАтрибут("TYPE");
-        Если (crmType="manual") Или (crmType="offset") Тогда
+        Если (crmType="manual") Или (crmType="offset") Или (crmType="cash_receipt") Или (crmType="cash_refund") Тогда
             crmList.ДобавитьЗначение(crmN,crmNode.ПолучитьАтрибут("DATE")+": "+crmNode.ПолучитьАтрибут("AMOUNT")+"; Дт "+crmNode.ПолучитьАтрибут("DEBIT")+" / Кт "+crmNode.ПолучитьАтрибут("CREDIT")+"; "+crmType);
         Иначе
-            Сообщить("CRM: кассовая операция пока не загружается: "+crmNode.ПолучитьАтрибут("DATE")+"; "+crmType+". Нужна отдельная проверка ПКО/РКО.");
+            Сообщить("CRM: неизвестный тип операции пропущен: "+crmType);
         КонецЕсли;
     КонецЦикла;
-    Если crmList.РазмерСписка()=0 Тогда Предупреждение("В этом пакете нет оплат картой/СБП или зачётов. ПКО/РКО на следующем этапе."); Возврат; КонецЕсли;
+    Если crmList.РазмерСписка()=0 Тогда Предупреждение("В этом пакете нет поддерживаемых клиентских оплат."); Возврат; КонецЕсли;
     crmChoice=0; crmPosition=1;
     Если crmList.ВыбратьЗначение(crmChoice,"Выберите одну оплату для теста",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
     crmNode=crmOperations.ПолучитьУзел(crmChoice); crmID=crmNode.ПолучитьАтрибут("ID");
@@ -203,6 +315,9 @@
     Если (ДатаГод(crmDate)<>2026) Или (crmAmount=0) Или (Окр(crmAmount,2)<>crmAmount) Тогда Предупреждение("Некорректны год или сумма оплаты."); Возврат; КонецЕсли;
     crmSources=crmNode.ВыбратьУзлы("SOURCE_PAYMENT");
     Если crmSources.КоличествоУзлов<>1+crmOffset Тогда Предупреждение("Не совпало количество исходных оплат."); Возврат; КонецЕсли;
+    Если (crmType="cash_receipt") Или (crmType="cash_refund") Тогда
+        crmImportCash(crmRoot,crmNode,crmSources,crmDate,crmAmount); Возврат;
+    КонецЕсли;
     crmDebitApplication="";
     Если crmOffset=1 Тогда
         Если (crmDebit<>"62.2") Или (crmCredit<>"62.2") Или (crmAmount<=0) Или (crmNode.ПолучитьАтрибут("STATUS")<>"confirm_pair") Тогда Предупреждение("Не подтверждена схема зачёта 62.2 / 62.2."); Возврат; КонецЕсли;
