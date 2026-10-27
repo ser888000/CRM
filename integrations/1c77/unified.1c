@@ -213,6 +213,84 @@
 КонецПроцедуры
 
 
+Процедура crmBatchPayments()
+    crmStage="Чтение пакета оплат";
+    Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда Предупреждение("Не найдена V7Plus.dll."); Возврат; КонецЕсли;
+    crmXML=СоздатьОбъект("AddIn.XMLParser");
+    Если Число(crmXML.ВерсияАнализатора)<2 Тогда Предупреждение("Нужен XMLParser не ниже2.0."); Возврат; КонецЕсли;
+    crmFile=""; crmDir="";
+    Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml для оплат всего пакета","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
+    crmXMLDoc=crmXML.СоздатьДокумент(); crmXMLDoc.Загрузить(crmDir+crmFile); crmRoot=crmXMLDoc.ЭлементДокумента;
+    Если (crmRoot.Наименование<>"CRM_TEST_EXPORT") Или (crmRoot.ПолучитьАтрибут("VERSION")<>"1") Или (crmRoot.ПолучитьАтрибут("TEST_ONLY")<>"1") Или (crmRoot.ПолучитьАтрибут("YEAR")<>"2026") Тогда
+        Предупреждение("Нужен тестовый пакет CRM версии1 за2026год."); Возврат;
+    КонецЕсли;
+    crmContracts=crmRoot.ВыбратьУзлы("CONTRACT");
+    Если (crmContracts.КоличествоУзлов<1) Или (crmContracts.КоличествоУзлов>20) Тогда Предупреждение("Выберите пакет от1 до20договоров."); Возврат; КонецЕсли;
+    crmKeys=СоздатьОбъект("СписокЗначений");
+    Для crmN=0 По crmContracts.КоличествоУзлов-1 Цикл
+        crmContract=crmContracts.ПолучитьУзел(crmN); crmID=crmContract.ПолучитьАтрибут("ID");
+        Если (crmUUID(crmID)=0) Или (crmKeys.НайтиЗначение(crmID)>0) Тогда Предупреждение("В пакете неверные или повторные ключи договоров."); Возврат; КонецЕсли;
+        crmKeys.ДобавитьЗначение(crmID);
+    КонецЦикла;
+    crmNodes=crmRoot.ВыбратьУзлы("OPERATIONS/OPERATION");
+    Если crmNodes.КоличествоУзлов=0 Тогда Предупреждение("В пакете нет операций для загрузки. Создано0."); Возврат; КонецЕсли;
+    crmKeys=СоздатьОбъект("СписокЗначений"); crmPreview="";
+    crmOrder=СоздатьОбъект("ТаблицаЗначений");
+    crmOrder.НоваяКолонка("PIndex","Число",10,0);
+    crmOrder.НоваяКолонка("PDate","Дата");
+    crmOrder.НоваяКолонка("PKey","Строка",36);
+    Для crmN=0 По crmNodes.КоличествоУзлов-1 Цикл
+        crmNode=crmNodes.ПолучитьУзел(crmN); crmID=crmNode.ПолучитьАтрибут("ID");
+        Если (crmUUID(crmID)=0) Или (crmKeys.НайтиЗначение(crmID)>0) Тогда Предупреждение("В пакете неверные или повторные ключи операций. Загрузка не начата."); Возврат; КонецЕсли;
+        crmKeys.ДобавитьЗначение(crmID);
+        crmDateText=crmNode.ПолучитьАтрибут("DATE");
+        Если СтрДлина(crmDateText)<>10 Тогда Предупреждение("Некорректная дата оплаты. Загрузка не начата."); Возврат; КонецЕсли;
+        crmDate=Дата(Прав(crmDateText,2)+"."+Сред(crmDateText,6,2)+"."+Лев(crmDateText,4));
+        Если ДатаГод(crmDate)<>2026 Тогда Предупреждение("Дата оплаты вне2026года. Загрузка не начата."); Возврат; КонецЕсли;
+        crmOrder.НоваяСтрока(); crmOrder.PIndex=crmN; crmOrder.PDate=crmDate; crmOrder.PKey=crmID;
+        Если crmN<20 Тогда
+            crmPreview=crmPreview+РазделительСтрок+crmDateText+"; "+crmNode.ПолучитьАтрибут("TYPE")+"; "+crmNode.ПолучитьАтрибут("AMOUNT")+"; Дт "+crmNode.ПолучитьАтрибут("DEBIT")+" / Кт "+crmNode.ПолучитьАтрибут("CREDIT");
+        КонецЕсли;
+    КонецЦикла;
+    crmOrder.Сортировать("+PDate,+PKey");
+    Если crmNodes.КоличествоУзлов>20 Тогда crmPreview=crmPreview+РазделительСтрок+"Показаны первые20 строк. Полный перечень будет в итоговом отчёте."; КонецЕсли;
+    crmPrompt="Загрузить клиентские оплаты всего пакета в тестовую базу? Операций: "+Строка(crmNodes.КоличествоУзлов)+crmPreview+РазделительСтрок;
+    crmPrompt=crmPrompt+"Карты, СБП, ПКО/РКО и зачёты загружаются с исходными датами. Аналитику выбираем один раз для каждого счёта; поступление и возврат кассы отдельно."+РазделительСтрок;
+    crmPrompt=crmPrompt+"Каждая операция сохраняется отдельно. Ошибка одной не отменяет предыдущие. Заявки должны быть проведены. Банковские выписки не создаются.";
+    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    crmCreated=0; crmExistingCount=0; crmFailed=0; crmCancelled=0; crmReport="";
+    crmCache=СоздатьОбъект("СписокЗначений");
+    crmOrder.ВыбратьСтроки();
+    Пока crmOrder.ПолучитьСтроку()=1 Цикл
+        crmIndex=crmOrder.PIndex; crmNode=crmNodes.ПолучитьУзел(crmIndex); crmResult="failed"; crmReason="";
+        Попытка
+            p_crmImportPayment(1,crmRoot,crmIndex,crmResult,crmCache);
+            Если crmTransaction=1 Тогда
+                ОтменитьТранзакцию(); crmTransaction=0; crmResult="failed"; crmReason="Незавершённая транзакция отменена";
+            КонецЕсли;
+        Исключение
+            crmReason=crmStage+": "+ОписаниеОшибки();
+            Если crmTransaction=1 Тогда ОтменитьТранзакцию(); crmTransaction=0; КонецЕсли;
+            Если crmResult<>"created" Тогда crmResult="failed"; КонецЕсли;
+        КонецПопытки;
+        Если crmResult="cancelled" Тогда
+            crmCancelled=1; crmReport=crmReport+РазделительСтрок+"Выбор аналитики отменён, оставшийся пакет остановлен"; Прервать;
+        КонецЕсли;
+        Если crmResult="created" Тогда
+            crmCreated=crmCreated+1; crmStatus="создана";
+        ИначеЕсли crmResult="existing" Тогда
+            crmExistingCount=crmExistingCount+1; crmStatus="уже существует, пропущена";
+        Иначе
+            crmFailed=crmFailed+1; crmStatus="ошибка, проверьте сообщения";
+        КонецЕсли;
+        crmReport=crmReport+РазделительСтрок+crmNode.ПолучитьАтрибут("DATE")+"; "+crmNode.ПолучитьАтрибут("TYPE")+"; "+crmNode.ПолучитьАтрибут("AMOUNT")+": "+crmStatus;
+        Если ПустаяСтрока(crmReason)=0 Тогда crmReport=crmReport+"; "+crmReason; КонецЕсли;
+    КонецЦикла;
+    crmSummary="CRM: оплаты пакета — создано: "+Строка(crmCreated)+"; существующих пропущено: "+Строка(crmExistingCount)+"; ошибок: "+Строка(crmFailed);
+    Если crmCancelled=1 Тогда crmSummary=crmSummary+"; отменено/не обработано: "+Строка(crmNodes.КоличествоУзлов-crmCreated-crmExistingCount-crmFailed); КонецЕсли;
+    Сообщить(crmSummary); Сообщить(crmReport); Предупреждение(crmSummary+РазделительСтрок+"Подробности — в окне сообщений.");
+КонецПроцедуры
+
 Процедура crmUnified()
     crmMenu=СоздатьОбъект("СписокЗначений");
     crmMenu.ДобавитьЗначение(1,"1. Заявка — создать или проверить существующую");
@@ -222,6 +300,7 @@
     crmMenu.ДобавитьЗначение(5,"5. Заявки всего пакета — создать недостающие");
     crmMenu.ДобавитьЗначение(6,"6. Путёвки всего пакета — провести и списать бланки");
     crmMenu.ДобавитьЗначение(7,"7. Отгрузки всего пакета — отразить готовую комиссию");
+    crmMenu.ДобавитьЗначение(8,"8. Оплаты и зачёты всего пакета");
     crmChoice=1; crmPosition=1;
     Если crmMenu.ВыбратьЗначение(crmChoice,"Обмен CRM -> 1С: выберите этап",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
     Если crmChoice=1 Тогда
@@ -238,6 +317,8 @@
         crmBatchVouchers();
     ИначеЕсли crmChoice=7 Тогда
         crmBatchShipments();
+    ИначеЕсли crmChoice=8 Тогда
+        crmBatchPayments();
     КонецЕсли;
 КонецПроцедуры
 
