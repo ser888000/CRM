@@ -169,17 +169,22 @@
     Возврат crmNext;
 КонецФункции
 
-Процедура crmImportVoucher()
-    Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда
-        Предупреждение("Не найдена V7Plus.dll."); Возврат;
+Процедура crmImportVoucher(crmBatch=0,crmBatchRoot="",crmBatchIndex=0,crmResult="",crmBatchSettings="")
+    crmResult="failed";
+    Если crmBatch=1 Тогда
+        crmRoot=crmBatchRoot;
+    Иначе
+        Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда
+            Предупреждение("Не найдена V7Plus.dll."); Возврат;
+        КонецЕсли;
+        crmXML=СоздатьОбъект("AddIn.XMLParser");
+        Если Число(crmXML.ВерсияАнализатора)<2 Тогда Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат; КонецЕсли;
+        crmFile=""; crmDir="";
+        Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml из CRM","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
+        crmStage="Чтение XML";
+        crmXMLDoc=crmXML.СоздатьДокумент(); crmXMLDoc.Загрузить(crmDir+crmFile);
+        crmRoot=crmXMLDoc.ЭлементДокумента;
     КонецЕсли;
-    crmXML=СоздатьОбъект("AddIn.XMLParser");
-    Если Число(crmXML.ВерсияАнализатора)<2 Тогда Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат; КонецЕсли;
-    crmFile=""; crmDir="";
-    Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml из CRM","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
-    crmStage="Чтение XML";
-    crmXMLDoc=crmXML.СоздатьДокумент(); crmXMLDoc.Загрузить(crmDir+crmFile);
-    crmRoot=crmXMLDoc.ЭлементДокумента;
     Если crmRoot.Наименование<>"CRM_TEST_EXPORT" Тогда Предупреждение("Это не пакет CRM."); Возврат; КонецЕсли;
     Если (crmRoot.ПолучитьАтрибут("VERSION")<>"1") Или (crmRoot.ПолучитьАтрибут("TEST_ONLY")<>"1") Тогда
         Предупреждение("Версия пакета не поддерживается."); Возврат;
@@ -192,7 +197,12 @@
         crmList.ДобавитьЗначение(crmN,"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+" от "+crmNode.ПолучитьАтрибут("DATE"));
     КонецЦикла;
     crmChoice=0; crmPosition=1;
-    Если crmList.ВыбратьЗначение(crmChoice,"Выберите договор для первой путёвки",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
+    Если crmBatch=1 Тогда
+        Если (crmBatchIndex<0) Или (crmBatchIndex>=crmNodes.КоличествоУзлов) Тогда Возврат; КонецЕсли;
+        crmChoice=crmBatchIndex;
+    Иначе
+        Если crmList.ВыбратьЗначение(crmChoice,"Выберите договор для первой путёвки",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmNode=crmNodes.ПолучитьУзел(crmChoice); crmID=crmNode.ПолучитьАтрибут("ID");
     Если crmUUID(crmID)=0 Тогда Предупреждение("Некорректный ключ CRM."); Возврат; КонецЕсли;
     crmStage="Поиск загруженной заявки";
@@ -200,6 +210,7 @@
     Если crmError(crmApplication)=1 Тогда Возврат; КонецЕсли;
     Если ПустоеЗначение(crmApplication)=1 Тогда Предупреждение("Сначала загрузите заявку обработкой CRM_1C_Application."); Возврат; КонецЕсли;
     Если crmVoucherExists(crmApplication)>0 Тогда
+        crmResult="existing";
         Сообщить("CRM: новая путёвка не создана. Существующие документы и номер бланка не изменены."); Возврат;
     КонецЕсли;
     crmApp=СоздатьОбъект("Документ.Заявка"); crmApp.НайтиДокумент(crmApplication);
@@ -245,8 +256,19 @@
         КонецЕсли;
     КонецЕсли;
     crmStage="Настройки номерных бланков";
-    crmSettings=crmGetSettings();
-    Если crmError(crmSettings)=1 Тогда Возврат; КонецЕсли;
+    Если crmBatch=1 Тогда
+        Если ТипЗначенияСтр(crmBatchSettings)="СписокЗначений" Тогда
+            Если crmValidSettings(crmBatchSettings)=0 Тогда Предупреждение("Настройки бланков пакета больше не действительны или закончились номера."); Возврат; КонецЕсли;
+            crmSettings=crmCopySettings(crmBatchSettings);
+        Иначе
+            crmSettings=crmGetSettings();
+            Если crmError(crmSettings)=1 Тогда crmResult="cancelled"; Возврат; КонецЕсли;
+            crmBatchSettings=crmCopySettings(crmSettings);
+        КонецЕсли;
+    Иначе
+        crmSettings=crmGetSettings();
+        Если crmError(crmSettings)=1 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmNext=crmNextNumber(crmSettings);
     crmSettings.Установить("next",crmNext);
     Если crmValidSettings(crmSettings)=0 Тогда Предупреждение("Номер вне допустимого диапазона вида бланка."); Возврат; КонецЕсли;
@@ -255,7 +277,9 @@
     crmPrompt=crmPrompt+"Бланк: "+Строка(crmSettings.Получить("blank"))+"; склад: "+Строка(crmSettings.Получить("store"))+РазделительСтрок;
     crmPrompt=crmPrompt+"Серия: "+crmSettings.Получить("series")+"; номер: "+Строка(crmNext)+РазделительСтрок;
     crmPrompt=crmPrompt+"Новая непроведённая заявка тоже будет проведена штатными средствами 1С.";
-    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    Если crmBatch=0 Тогда
+        Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmStage="Начало сохранения";
     НачатьТранзакцию(); crmTransaction=1;
     Если crmVoucherExists(crmApplication)>0 Тогда crmStop("Путёвка уже существует, создание отменено."); Возврат; КонецЕсли;
@@ -290,7 +314,7 @@
     Если (crmCheck.Проведен()<>1) Или (crmCheck.Заявка<>crmApplication) Или (crmCheck.НомерПутевки<>crmNext) Или (crmCheck.Сумма<>crmAmount) Или (crmCheck.флСписанияБланка<>1) Тогда
         crmStop("Не прошла проверка сохранённой путёвки. Создание отменено."); Возврат;
     КонецЕсли;
-    ЗафиксироватьТранзакцию(); crmTransaction=0;
+    ЗафиксироватьТранзакцию(); crmTransaction=0; crmResult="created";
     Сообщить("CRM: создана и проведена "+Строка(crmSaved)+" на основании "+Строка(crmApplication));
     Сообщить("CRM: списан один бланк; серия "+crmCheck.СерияПутевки+"; номер "+Строка(crmNext)+"; сумма "+Строка(crmAmount));
     crmStage="Сохранение следующего номера";
@@ -300,9 +324,10 @@
     Исключение
         Сообщить("CRM: путёвка проведена, но следующий номер не сохранён в профиле. При следующем создании он будет восстановлен по документам базы.");
     КонецПопытки;
+    Если crmBatch=1 Тогда crmBatchSettings=crmCopySettings(crmSettings); КонецЕсли;
     Сообщить("CRM: отгрузка и клиентские платежи пока не создавались. Повторите тот же договор: новая путёвка и второе списание не должны появиться.");
     crmStage="Просмотр путёвки";
-    ОткрытьФорму(crmSaved);
+    Если crmBatch=0 Тогда ОткрытьФорму(crmSaved); КонецЕсли;
 КонецПроцедуры
 
 Процедура ПриОткрытии()
