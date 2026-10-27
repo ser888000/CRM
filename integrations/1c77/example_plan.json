@@ -20,7 +20,7 @@
       "cost": "70000.00",
       "commission": "30000.00",
       "currency": "RUB",
-      "voucher_date": "2026-01-01",
+      "voucher_date": "2026-12-31",
       "shipment_date": "2026-01-20",
       "shipment_status": "in_period",
       "payments": [

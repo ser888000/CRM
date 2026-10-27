@@ -136,7 +136,10 @@
     crmIssues=crmIssues+crmDifference("Путёвка: строк",crmVoucherDoc.КоличествоСтрок(),1);
     crmIssues=crmIssues+crmDifference("Путёвка: пометка удаления",crmVoucherDoc.ПометкаУдаления(),0);
     crmIssues=crmIssues+crmDifference("Путёвка: проведена",crmVoucherDoc.Проведен(),1);
-    Если crmVoucherDoc.ДатаДок>crmDate Тогда crmIssues=crmIssues+"Путёвка: дата "+Строка(crmVoucherDoc.ДатаДок)+" позже даты отгрузки "+Строка(crmDate)+"."+РазделительСтрок; КонецЕсли;
+    // Служебная путёвка на 31 декабря не переносит дату признания комиссии.
+    Если (crmVoucherDoc.ДатаДок>crmDate) И (crmVoucherDoc.ДатаДок<>КонГода(crmDate)) Тогда
+        crmIssues=crmIssues+"Путёвка: дата "+Строка(crmVoucherDoc.ДатаДок)+" позже отгрузки и не является концом её года."+РазделительСтрок;
+    КонецЕсли;
     Если crmVoucherDoc.Заявка<>crmApp.ТекущийДокумент() Тогда crmIssues=crmIssues+"Путёвка: ссылка на другую заявку."+РазделительСтрок; КонецЕсли;
     crmIssues=crmIssues+crmDifference("Путёвка: общая сумма",crmVoucherDoc.Сумма,crmAmount);
     crmIssues=crmIssues+crmDifference("Путёвка: оплачено",crmVoucherDoc.Оплачено,crmAmount);

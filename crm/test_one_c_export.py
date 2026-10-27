@@ -38,6 +38,10 @@ class OneCExportTests(TestCase):
         row = plan['contracts'][0]
         self.assertEqual((row['amount'], row['cost'], row['commission']), ('100000.00', '70000.00', '30000.00'))
         self.assertEqual(row['shipment_date'], '2026-01-20')
+        self.assertEqual(row['voucher_date'], '2026-12-31')
+        self.assertEqual(row['date'], '2026-01-01')
+        self.assertEqual([p['date'] for p in row['payments']],
+                         ['2026-01-10', '2026-01-15', '2026-01-20', '2026-01-25'])
         self.assertEqual(len(plan['operations']), 4)
         self.assertEqual(plan, build_plan([self.contract.pk], 2026))
         self.assertEqual(len({o['id'] for o in plan['operations']}), 4)
@@ -48,6 +52,7 @@ class OneCExportTests(TestCase):
         plan = build_plan([self.contract.pk], 2026)
         self.assertEqual(plan['operations'], [])
         self.assertEqual(plan['contracts'][0]['shipment_date'], '2026-01-10')
+        self.assertEqual(plan['contracts'][0]['voucher_date'], '2026-12-31')
         self.assertEqual(plan['contracts'][0]['payments'][0]['status'], 'bank_statement_only')
 
     def test_refund_uses_negative_amount_and_does_not_reverse_accounts(self):
@@ -70,7 +75,24 @@ class OneCExportTests(TestCase):
         with ZipFile(io.BytesIO(package_bytes(plan))) as archive:
             root = ET.fromstring(archive.read('exchange.xml'))
         self.assertEqual([c.get('VOUCHER_DATE') for c in root.findall('CONTRACT')],
-                         ['2026-01-01', '2026-03-01', '2026-06-01'])
+                         ['2026-12-31', '2026-12-31', '2026-12-31'])
+
+    def test_voucher_year_end_uses_export_year_without_moving_other_dates(self):
+        payment = self.pay(amount=80000)
+        payment.date = date(2027, 1, 10); payment.save()
+        plan = build_plan([self.contract.pk], 2027)
+        contract = plan['contracts'][0]
+        self.assertEqual(contract['voucher_date'], '2027-12-31')
+        self.assertEqual(contract['date'], '2026-01-01')
+        self.assertEqual(contract['shipment_date'], '2027-01-10')
+        self.assertEqual(contract['payments'][0]['date'], '2027-01-10')
+        with ZipFile(io.BytesIO(package_bytes(plan))) as archive:
+            root = ET.fromstring(archive.read('exchange.xml'))
+        node = root.find('CONTRACT')
+        self.assertEqual(node.get('VOUCHER_DATE'), '2027-12-31')
+        self.assertEqual(node.get('SHIPMENT_DATE'), '2027-01-10')
+        self.assertEqual(node.get('DATE'), '2026-01-01')
+        self.assertEqual(node.find('PAYMENT').get('DATE'), '2027-01-10')
 
     def test_cash_orders_keep_positive_document_sum_and_signed_source_in_xml(self):
         receipt = self.pay(method='Касса чек', amount=80000)

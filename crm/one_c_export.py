@@ -116,7 +116,7 @@ def build_plan(contract_ids, year):
                   'customer': customer, 'operator': {'id': str(contract.operator.exchange_id), 'name': contract.operator.name},
                   'amount': money(contract.amount), 'cost': money(contract.cost),
                   'commission': money(contract.profit), 'currency': 'RUB',
-                  'voucher_date': contract.date.isoformat(), 'shipment_date': None,
+                  'voucher_date': date(year, 12, 31).isoformat(), 'shipment_date': None,
                   'shipment_status': 'not_reached', 'payments': []}
         plan['contracts'].append(record)
         # Recognition must include the full history, even for a current-year payment on an old contract.
