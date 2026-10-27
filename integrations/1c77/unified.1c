@@ -141,6 +141,78 @@
 КонецПроцедуры
 
 
+Процедура crmBatchShipments()
+    crmStage="Чтение пакета отгрузок";
+    Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда Предупреждение("Не найдена V7Plus.dll."); Возврат; КонецЕсли;
+    crmXML=СоздатьОбъект("AddIn.XMLParser");
+    Если Число(crmXML.ВерсияАнализатора)<2 Тогда Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат; КонецЕсли;
+    crmFile=""; crmDir="";
+    Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml для отгрузок всего пакета","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
+    crmPath=crmDir+crmFile;
+    crmXMLDoc=crmXML.СоздатьДокумент(); crmXMLDoc.Загрузить(crmPath); crmRoot=crmXMLDoc.ЭлементДокумента;
+    Если (crmRoot.Наименование<>"CRM_TEST_EXPORT") Или (crmRoot.ПолучитьАтрибут("VERSION")<>"1") Или (crmRoot.ПолучитьАтрибут("TEST_ONLY")<>"1") Или (crmRoot.ПолучитьАтрибут("YEAR")<>"2026") Тогда
+        Предупреждение("Нужен тестовый пакет CRM версии 1 за 2026 год."); Возврат;
+    КонецЕсли;
+    crmNodes=crmRoot.ВыбратьУзлы("CONTRACT");
+    Если (crmNodes.КоличествоУзлов<1) Или (crmNodes.КоличествоУзлов>20) Тогда Предупреждение("Выберите пакет от 1 до 20 договоров."); Возврат; КонецЕсли;
+    crmKeys=СоздатьОбъект("СписокЗначений"); crmPreview="";
+    crmOrder=СоздатьОбъект("ТаблицаЗначений");
+    crmOrder.НоваяКолонка("SIndex","Число",3,0);
+    crmOrder.НоваяКолонка("SDate","Дата");
+    crmOrder.НоваяКолонка("SKey","Строка",36);
+    Для crmN=0 По crmNodes.КоличествоУзлов-1 Цикл
+        crmNode=crmNodes.ПолучитьУзел(crmN); crmID=crmNode.ПолучитьАтрибут("ID");
+        Если (crmUUID(crmID)=0) Или (crmKeys.НайтиЗначение(crmID)>0) Тогда Предупреждение("В пакете некорректные или повторяющиеся ключи договоров. Загрузка не начата."); Возврат; КонецЕсли;
+        crmKeys.ДобавитьЗначение(crmID);
+        crmOrder.НоваяСтрока(); crmOrder.SIndex=crmN; crmOrder.SKey=crmID; crmOrder.SDate=Дата(2026,12,31);
+        Если crmNode.ПолучитьАтрибут("SHIPMENT_STATUS")="in_period" Тогда
+            crmDateText=crmNode.ПолучитьАтрибут("SHIPMENT_DATE");
+            Если СтрДлина(crmDateText)<>10 Тогда Предупреждение("Не задана дата готовой отгрузки. Загрузка не начата."); Возврат; КонецЕсли;
+            crmOrder.SDate=Дата(Прав(crmDateText,2)+"."+Сред(crmDateText,6,2)+"."+Лев(crmDateText,4));
+            crmPreview=crmPreview+РазделительСтрок+"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+"; отгрузка "+crmDateText+"; комиссия "+crmNode.ПолучитьАтрибут("COMMISSION");
+        Иначе
+            crmPreview=crmPreview+РазделительСтрок+"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+"; отгрузка не готова, проверим причину";
+        КонецЕсли;
+    КонецЦикла;
+    crmOrder.Сортировать("+SDate,+SKey");
+    crmPrompt="Создать и провести отгрузки всего пакета в тестовой базе? Договоров: "+Строка(crmNodes.КоличествоУзлов)+crmPreview+РазделительСтрок;
+    crmPrompt=crmPrompt+"Создадим только готовые отгрузки с датами из пакета и полной комиссией. Существующие сохраняются без изменений. Путёвки на31декабря допускаются; их повторного проведения и списания бланков нет."+РазделительСтрок;
+    crmPrompt=crmPrompt+"Каждая отгрузка сохраняется отдельно: ошибка одной не отменяет уже созданные. Неготовые договоры будут пропущены. При необходимости восстановится пустой статус старой импортированной заявки. Итог появится в окне сообщений.";
+    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    crmCreated=0; crmExistingCount=0; crmFailed=0; crmNotReady=0; crmReport="";
+    crmOrder.ВыбратьСтроки();
+    Пока crmOrder.ПолучитьСтроку()=1 Цикл
+        crmIndex=crmOrder.SIndex;
+        crmNode=crmNodes.ПолучитьУзел(crmIndex); crmResult="failed"; crmReason="";
+        Попытка
+            s_crmImportShipment(1,crmRoot,crmIndex,crmResult,crmReason);
+            Если crmTransaction=1 Тогда
+                ОтменитьТранзакцию(); crmTransaction=0; crmResult="failed";
+                crmReason="Незавершённая транзакция отменена";
+            КонецЕсли;
+        Исключение
+            crmReason=crmStage+": "+ОписаниеОшибки();
+            Если crmTransaction=1 Тогда ОтменитьТранзакцию(); crmTransaction=0; КонецЕсли;
+            Если crmResult<>"created" Тогда crmResult="failed"; КонецЕсли;
+        КонецПопытки;
+        Если crmResult="created" Тогда
+            crmCreated=crmCreated+1; crmStatus="создана";
+        ИначеЕсли crmResult="existing" Тогда
+            crmExistingCount=crmExistingCount+1; crmStatus="уже существует, пропущена";
+        ИначеЕсли crmResult="not_ready" Тогда
+            crmNotReady=crmNotReady+1; crmStatus="отгрузка пока не готова";
+        Иначе
+            crmFailed=crmFailed+1; crmStatus="не загружена — проверьте сообщения";
+        КонецЕсли;
+        crmReport=crmReport+РазделительСтрок+"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+": "+crmStatus;
+        Если ПустаяСтрока(crmReason)=0 Тогда crmReport=crmReport+"; "+crmReason; КонецЕсли;
+    КонецЦикла;
+    crmSummary="CRM: отгрузки пакета — создано и проведено: "+Строка(crmCreated)+"; существующих пропущено: "+Строка(crmExistingCount)+"; не готово: "+Строка(crmNotReady)+"; ошибок: "+Строка(crmFailed);
+    Сообщить(crmSummary); Сообщить(crmReport);
+    Предупреждение(crmSummary+РазделительСтрок+"Подробности по каждому договору — в окне сообщений. Повторного списания бланков нет, клиентские оплаты этим пунктом не создаются.");
+КонецПроцедуры
+
+
 Процедура crmUnified()
     crmMenu=СоздатьОбъект("СписокЗначений");
     crmMenu.ДобавитьЗначение(1,"1. Заявка — создать или проверить существующую");
@@ -149,6 +221,7 @@
     crmMenu.ДобавитьЗначение(4,"4. Оплаты и зачёты — карты, СБП, ПКО, РКО, зачёт");
     crmMenu.ДобавитьЗначение(5,"5. Заявки всего пакета — создать недостающие");
     crmMenu.ДобавитьЗначение(6,"6. Путёвки всего пакета — провести и списать бланки");
+    crmMenu.ДобавитьЗначение(7,"7. Отгрузки всего пакета — отразить готовую комиссию");
     crmChoice=1; crmPosition=1;
     Если crmMenu.ВыбратьЗначение(crmChoice,"Обмен CRM -> 1С: выберите этап",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
     Если crmChoice=1 Тогда
@@ -163,6 +236,8 @@
         crmBatchApplications();
     ИначеЕсли crmChoice=6 Тогда
         crmBatchVouchers();
+    ИначеЕсли crmChoice=7 Тогда
+        crmBatchShipments();
     КонецЕсли;
 КонецПроцедуры
 

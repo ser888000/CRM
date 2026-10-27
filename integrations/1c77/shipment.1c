@@ -178,15 +178,20 @@
     Возврат crmIssues;
 КонецФункции
 
-Процедура crmImportShipment()
-    Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда Предупреждение("Не найдена V7Plus.dll."); Возврат; КонецЕсли;
-    crmXML=СоздатьОбъект("AddIn.XMLParser");
-    Если Число(crmXML.ВерсияАнализатора)<2 Тогда Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат; КонецЕсли;
-    crmFile=""; crmDir="";
-    Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml из CRM","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
-    crmStage="Чтение XML";
-    crmXMLDoc=crmXML.СоздатьДокумент(); crmXMLDoc.Загрузить(crmDir+crmFile);
-    crmRoot=crmXMLDoc.ЭлементДокумента;
+Процедура crmImportShipment(crmBatch=0,crmBatchRoot="",crmBatchIndex=0,crmResult="",crmResultReason="")
+    crmResult="failed"; crmResultReason="";
+    Если crmBatch=1 Тогда
+        crmRoot=crmBatchRoot;
+    Иначе
+        Если ЗагрузитьВнешнююКомпоненту("V7plus.dll")<>1 Тогда Предупреждение("Не найдена V7Plus.dll."); Возврат; КонецЕсли;
+        crmXML=СоздатьОбъект("AddIn.XMLParser");
+        Если Число(crmXML.ВерсияАнализатора)<2 Тогда Предупреждение("Нужен XMLParser не ниже 2.0."); Возврат; КонецЕсли;
+        crmFile=""; crmDir="";
+        Если ФС.ВыбратьФайл(0,crmFile,crmDir,"Выберите exchange.xml из CRM","Пакет CRM (*.xml)|*.xml","xml",)<>1 Тогда Возврат; КонецЕсли;
+        crmStage="Чтение XML";
+        crmXMLDoc=crmXML.СоздатьДокумент(); crmXMLDoc.Загрузить(crmDir+crmFile);
+        crmRoot=crmXMLDoc.ЭлементДокумента;
+    КонецЕсли;
     Если crmRoot.Наименование<>"CRM_TEST_EXPORT" Тогда Предупреждение("Это не пакет CRM."); Возврат; КонецЕсли;
     Если (crmRoot.ПолучитьАтрибут("VERSION")<>"1") Или (crmRoot.ПолучитьАтрибут("TEST_ONLY")<>"1") Тогда Предупреждение("Версия пакета не поддерживается."); Возврат; КонецЕсли;
     crmNodes=crmRoot.ВыбратьУзлы("CONTRACT");
@@ -197,14 +202,35 @@
         crmList.ДобавитьЗначение(crmN,"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+" от "+crmNode.ПолучитьАтрибут("DATE"));
     КонецЦикла;
     crmChoice=0; crmPosition=1;
-    Если crmList.ВыбратьЗначение(crmChoice,"Выберите договор для первой отгрузки",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
+    Если crmBatch=1 Тогда
+        Если (crmBatchIndex<0) Или (crmBatchIndex>=crmNodes.КоличествоУзлов) Тогда Возврат; КонецЕсли;
+        crmChoice=crmBatchIndex;
+    Иначе
+        Если crmList.ВыбратьЗначение(crmChoice,"Выберите договор для первой отгрузки",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmNode=crmNodes.ПолучитьУзел(crmChoice); crmID=crmNode.ПолучитьАтрибут("ID");
     Если crmUUID(crmID)=0 Тогда Предупреждение("Некорректный ключ CRM."); Возврат; КонецЕсли;
+    Если crmBatch=1 Тогда
+        crmShipmentStatus=crmNode.ПолучитьАтрибут("SHIPMENT_STATUS");
+        Если crmShipmentStatus<>"in_period" Тогда
+            Если crmShipmentStatus="not_reached" Тогда
+                crmResult="not_ready"; crmResultReason="Оплата ещё не превысила себестоимость";
+            ИначеЕсли crmShipmentStatus="outside_period" Тогда
+                crmResult="not_ready"; crmResultReason="Дата отгрузки вне выбранного года";
+            ИначеЕсли crmShipmentStatus="requires_review" Тогда
+                crmResult="not_ready"; crmResultReason="Нужна проверка себестоимости, комиссии, возвратов или зачётов";
+            Иначе
+                crmResultReason="В пакете неизвестный статус готовности отгрузки";
+            КонецЕсли;
+            Сообщить("CRM: договор "+crmNode.ПолучитьАтрибут("NUMBER")+": "+crmResultReason+". Отгрузка не создавалась."); Возврат;
+        КонецЕсли;
+    КонецЕсли;
     crmStage="Поиск заявки и существующей отгрузки";
     crmApplication=crmExisting(crmID);
     Если crmError(crmApplication)=1 Тогда Возврат; КонецЕсли;
     Если ПустоеЗначение(crmApplication)=1 Тогда Предупреждение("Сначала загрузите заявку."); Возврат; КонецЕсли;
     Если crmShipmentExists(crmApplication)>0 Тогда
+        crmResult="existing";
         Сообщить("CRM: новая отгрузка не создана, существующая не изменена, доход повторно не начислен."); Возврат;
     КонецЕсли;
     Если crmNode.ПолучитьАтрибут("SHIPMENT_STATUS")<>"in_period" Тогда
@@ -246,7 +272,9 @@
     Если crmRepairStatus=1 Тогда
         crmPrompt=crmPrompt+РазделительСтрок+"Пустой статус импортированной заявки будет восстановлен на Оплата, заявка перепроведена. Будут добавлены штатные Услуги по заявке, если их нет.";
     КонецЕсли;
-    Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    Если crmBatch=0 Тогда
+        Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
+    КонецЕсли;
     crmStage="Создание отгрузки";
     НачатьТранзакцию(); crmTransaction=1;
     Если crmShipmentExists(crmApplication)>0 Тогда crmStop("Отгрузка уже существует. Повторное создание отменено."); Возврат; КонецЕсли;
@@ -287,13 +315,13 @@
     Если (crmCheck.Проведен()<>1) Или (crmCheck.Заявка<>crmApplication) Или (crmCheck.ДатаДок<>crmDate) Или (crmCheck.КоличествоСтрок()<>1) Тогда crmStop("Не прошла проверка записанной отгрузки."); Возврат; КонецЕсли;
     crmCheck.ВыбратьСтроки(); crmCheck.ПолучитьСтроку();
     Если (crmCheck.Услуга<>crmService) Или (crmCheck.Путевка<>crmVoucherRef) Или (crmCheck.Сумма<>crmAmount) Или (crmCheck.Комиссия<>crmCommission) Тогда crmStop("Суммы или связи записанной отгрузки отличаются от проекта."); Возврат; КонецЕсли;
-    ЗафиксироватьТранзакцию(); crmTransaction=0;
+    ЗафиксироватьТранзакцию(); crmTransaction=0; crmResult="created";
     Сообщить("CRM: создана и проведена "+Строка(crmSaved)+" на основании "+Строка(crmApplication));
     Сообщить("CRM: дата отгрузки "+crmDateText+"; сумма "+Строка(crmAmount)+"; комиссия "+Строка(crmCommission));
-    Сообщить("CRM: путёвка не перепроводилась, бланк повторно не списывался. Клиентские платежи пока не создавались.");
+    Сообщить("CRM: путёвка не перепроводилась, бланк повторно не списывался. Этот этап не добавлял клиентские платежи.");
     Сообщить("CRM: проверьте проводки выручки по комиссии и налогового учёта. Повторите тот же договор для проверки отсутствия дубля.");
     crmStage="Просмотр отгрузки";
-    ОткрытьФорму(crmSaved);
+    Если crmBatch=0 Тогда ОткрытьФорму(crmSaved); КонецЕсли;
 КонецПроцедуры
 
 Процедура ПриОткрытии()
