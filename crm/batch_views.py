@@ -12,7 +12,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
 from django.views.decorators.http import require_POST
 from .models import TourvisorBatch,TourvisorBatchRow,Contract,TaskTemplate
-from .tourvisor import fetch_orders,normalize_order,apply_order,TourvisorError,GROUPS
+from .tourvisor import fetch_orders,normalize_order,apply_order,TourvisorError,GROUPS,check_import_boundary
 from .tourvisor_diff import compare_order
 from .customer_matching import customer_matches
 from .services import task_due
@@ -37,6 +37,7 @@ def summarize(row):
             info['existing']=Contract.objects.filter(number=row.source_id).first()
             info['error']='В CRM есть ручной договор с этим номером. Проверьте его перед импортом.'
         else:
+            check_import_boundary(row.source_id)
             match,candidates=customer_matches(n['customer'])
             info.update(eligible=True,status='Новая',match=match,candidates=candidates,error=row.message if row.state=='error' else '')
     except TourvisorError as e:info['error']=str(e)

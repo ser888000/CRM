@@ -18,6 +18,16 @@ class CustomerLinksTests(TestCase):
         ContractLine.objects.create(contract=self.contract,amount=100)
         ContractLine.objects.create(contract=self.contract,amount=200)
         self.method=PaymentMethod.objects.create(name='Касса')
+    def test_contract_customer_dialog_uses_unlocalized_large_identifier(self):
+        customer=Customer.objects.create(pk=16633,name='Dialog Example')
+        Contract.objects.create(customer=customer,operator=self.operator,number='DIALOG',date=date(2026,10,28))
+        response=self.client.get('/',{'period':'custom','start':'2026-10-01','end':'2026-10-31'})
+        self.assertContains(response,'data-reference-open="/references/customer/16633/"')
+        popup=self.client.get('/references/customer/16633/')
+        self.assertEqual(popup.status_code,200)
+        self.assertEqual(popup['X-Frame-Options'],'SAMEORIGIN')
+        self.assertContains(popup,'rows="15"')
+
     def test_customer_tasks_payments_and_legacy_payer_are_linked(self):
         shared=Task.objects.create(title='Общая',customer=self.customer,due=date.today())
         linked=Task.objects.create(title='Договорная',contract=self.contract,due=date.today())

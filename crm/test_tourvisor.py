@@ -12,7 +12,7 @@ from .services import copy_contract
 
 def sample():
     o=json.loads((Path(__file__).parent.parent/'docs/examples/tourvisor-online-anonymized.json').read_text())['orders']['order'][0]
-    o['id']='2193761'
+    o['id']='2299358'
     # Distinct synthetic tourists, independent of the real person's data.
     for i,t in enumerate(o['tourist']):
         t['surname']='EXAMPLE'+str(i);t['passportseries']='00';t['passportnumber']='00000'+str(i)
@@ -26,7 +26,7 @@ class ImportTests(TestCase):
     def test_atomic_import_repeat_and_copy(self):
         template=TaskTemplate.objects.create(name='Вылет',anchor='start',offset=-1,copy_flights=True)
         c=apply_order(self.order,self.user,set(GROUPS),[template])
-        self.assertEqual(c.number,'2193761');self.assertEqual(c.amount,Decimal('200000'))
+        self.assertEqual(c.number,'2299358');self.assertEqual(c.amount,Decimal('200000'))
         self.assertEqual(c.lines.filter(tourist__isnull=False).count(),2)
         self.assertIn('XX1234',Task.objects.get().description)
         with self.assertRaises(TourvisorError):apply_order(self.order,self.user,set(GROUPS))
@@ -56,7 +56,7 @@ class ImportTests(TestCase):
         with self.assertRaises(TourvisorError):normalize_order(self.order)
     def test_preview_does_not_save_then_confirm_is_idempotent(self):
         with patch('crm.import_views.fetch_order',return_value=self.order):
-            response=self.client.post('/tourvisor/import/',{'action':'lookup','order_id':'2193761'})
+            response=self.client.post('/tourvisor/import/',{'action':'lookup','order_id':'2299358'})
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'Новый договор')
         self.assertFalse(Contract.objects.exists())
@@ -69,7 +69,7 @@ class ImportTests(TestCase):
         self.assertEqual(Contract.objects.count(),1)
     def test_error_and_access_control(self):
         with patch('crm.import_views.fetch_order',side_effect=TourvisorError('Турвизор временно недоступен')):
-            response=self.client.post('/tourvisor/import/',{'action':'lookup','order_id':'2193761'})
+            response=self.client.post('/tourvisor/import/',{'action':'lookup','order_id':'2299358'})
         self.assertContains(response,'временно недоступен');self.assertFalse(Contract.objects.exists())
         user=get_user_model().objects.create_user('limited',password='test-password-123')
         self.client.force_login(user)
@@ -93,16 +93,16 @@ class ClientErrors(TestCase):
         for body in [b'Error connecting database! Please, try again later.',b'{"error":{"errormessage":"Authorisation Error."}}',b'{"orders":{"order":[]}}']:
             mock=MagicMock();mock.open.return_value.__enter__.return_value.read.return_value=body
             with patch.dict('os.environ',{'TOURVISOR_API_KEY':'SENSITIVE-TEST-KEY'}),patch('crm.tourvisor.request.build_opener',return_value=mock):
-                with self.assertRaises(TourvisorError) as caught:fetch_order('2193761')
+                with self.assertRaises(TourvisorError) as caught:fetch_order('2299358')
                 self.assertNotIn('SENSITIVE-TEST-KEY',str(caught.exception));self.assertNotIn('authkey',str(caught.exception))
 
     def test_missing_key_and_http_failure_do_not_expose_details(self):
         from urllib.error import HTTPError
         with patch.dict('os.environ',{},clear=True):
-            with self.assertRaises(TourvisorError):fetch_order('2193761')
+            with self.assertRaises(TourvisorError):fetch_order('2299358')
         mock=MagicMock();mock.open.side_effect=HTTPError('https://example.test/?authkey=SENSITIVE',503,'unavailable',None,None)
         with patch.dict('os.environ',{'TOURVISOR_API_KEY':'SENSITIVE'}),patch('crm.tourvisor.request.build_opener',return_value=mock):
-            with self.assertRaises(TourvisorError) as caught:fetch_order('2193761')
+            with self.assertRaises(TourvisorError) as caught:fetch_order('2299358')
             self.assertNotIn('SENSITIVE',str(caught.exception))
 
 class OptionalGroups(TestCase):

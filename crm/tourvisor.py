@@ -15,6 +15,13 @@ from .services import create_tasks,flight_description
 
 GROUPS={'customer':'Заказчик','tour':'Параметры тура','tourists':'Туристы','hotel':'Проживание','transport':'Перелёты','service':'Услуги','amount':'Стоимость договора'}
 class TourvisorError(Exception):pass
+
+MIN_TOURVISOR_ID=2299358
+
+def check_import_boundary(source_id):
+    if int(source_id)<MIN_TOURVISOR_ID:
+        raise TourvisorError('Импорт новых договоров разрешён начиная с № 2299358 включительно. Более ранние договоры перенесены из старой CRM.')
+
 class NoRedirect(request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
@@ -155,7 +162,7 @@ def normalize_order(o):
 
 @sensitive_variables()
 @transaction.atomic
-def apply_order(order,user,groups,templates=None,dates=None,expected=None,expected_version=None,end=None,task_updates=None,customer_choice='auto'):
+def apply_order(order,user,groups,templates=None,dates=None,expected=None,expected_version=None,end=None,task_updates=None,customer_choice='auto',update_customer=False):
     n=normalize_order(order);source_id=str(order['id'])
     if end is not None and n['contract']['start'] and end<n['contract']['start']:
         raise TourvisorError('Дата окончания тура раньше начала.')
@@ -183,6 +190,7 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             pending_moves.append((task,change['new']))
     new=contract is None
     if new:
+        check_import_boundary(source_id)
         if not {'customer','tour','amount'}.issubset(groups):
             raise TourvisorError('Для нового договора выберите заказчика, параметры тура и стоимость.')
         # A manually entered contract may already have this number: never create an automatic duplicate.
@@ -203,15 +211,14 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             customer=Customer.objects.select_for_update().get(pk=customer.pk)
         operator=Operator.objects.get_or_create(name=n['operator'])[0]
         contract=Contract.objects.create(customer=customer,operator=operator,tourvisor_id=source_id,**n['contract'])
-    if 'customer' in groups and not new:
-        customer=contract.customer
-        if any(getattr(customer,k)!=v for k,v in n['customer'].items()):
-            # Isolate real changes only; selecting an unchanged section must not
-            # create another customer card after successful reuse on import.
-            if customer.contract_set.exclude(pk=contract.pk).exists():
-                customer.pk=None;customer.is_default=False;customer.save();contract.customer=customer
-            for k,v in n['customer'].items():setattr(customer,k,v)
+    if 'customer' in groups and (not new or update_customer):
+        customer=Customer.objects.select_for_update().get(pk=contract.customer_id)
+        before={key:getattr(customer,key) for key in n['customer']}
+        if any(before[key]!=value for key,value in n['customer'].items()):
+            for key,value in n['customer'].items():setattr(customer,key,value)
             customer.save()
+            contract.customer=customer
+            AuditEvent.objects.create(actor=user,object_type='crm.Customer',object_id=str(customer.pk),action='tourvisor_updated',changes={key:{'old':str(before[key]),'new':str(value)} for key,value in n['customer'].items() if before[key]!=value})
     if 'tour' in groups and not new:
         for k,v in n['contract'].items():
             if k not in ('number','date','tourvisor_time','hotel','region','room','meal'):setattr(contract,k,v)

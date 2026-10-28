@@ -57,12 +57,13 @@ def array_diff(old,new,group):
             add_change(changes,label,a.get(key),b.get(key))
     return changes
 
-def compare_order(existing,normalized):
+def compare_order(existing,normalized,customer=None):
     result=[]
     def section(key,changes):result.append({'key':key,'label':GROUPS[key],'changes':changes,'changed':bool(changes)})
     changes=[]
+    current_customer=customer or (existing.customer if existing else None)
     for field,value in normalized['customer'].items():
-        add_change(changes,Customer._meta.get_field(field).verbose_name,getattr(existing.customer,field) if existing else None,value,force=existing is None and value not in ('',None))
+        add_change(changes,Customer._meta.get_field(field).verbose_name,getattr(current_customer,field) if current_customer else None,value,force=current_customer is None and value not in ('',None))
     section('customer',changes)
     changes=[]
     for field,value in normalized['contract'].items():

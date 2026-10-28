@@ -7,5 +7,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  const fields=[...form.querySelectorAll('[data-move-anchor]')];fields.forEach(f=>f.addEventListener('input',()=>f.dataset.manual='1'));
  const end=form.querySelector('#id_end');
  end?.addEventListener('change',()=>{if(tour)tour.checked=true;toggleTasks();const target=parse(end.value);if(target===null)return;fields.forEach(f=>{if(f.dataset.moveAnchor!=='end'||f.dataset.manual)return;const oldAnchor=parse(f.dataset.oldAnchor),oldDue=parse(f.dataset.oldDue);if(oldAnchor===null||oldDue===null)return;f.value=new Date(oldDue+target-oldAnchor).toISOString().slice(0,10);});});
- form.addEventListener('submit',()=>{form.querySelectorAll('button').forEach(b=>b.disabled=true)});
+ const choice=form.querySelector('[name=customer_choice]'),update=form.querySelector('[name=update_customer]');
+ choice?.addEventListener('change',()=>{if(update)update.checked=false});
+ form.addEventListener('submit',event=>{if(event.submitter?.name==='action')form.querySelector('input[name=action]').value=event.submitter.value;form.querySelectorAll('button').forEach(b=>b.disabled=true)});
 });

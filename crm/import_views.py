@@ -10,10 +10,16 @@ from django.views.decorators.cache import never_cache
 from .models import Contract,TaskTemplate
 from .services import task_due
 from .tourvisor_diff import compare_order,task_moves
-from .tourvisor import fetch_order,normalize_order,apply_order,TourvisorError,GROUPS
+from .tourvisor import fetch_order,normalize_order,apply_order,TourvisorError,GROUPS,check_import_boundary
 
 class LookupForm(forms.Form):
     order_id=forms.RegexField(r'^[0-9]{1,20}$',label='ID онлайн-заявки / номер договора Турвизора',max_length=20)
+    def clean_order_id(self):
+        value=self.cleaned_data['order_id']
+        if not Contract.objects.filter(tourvisor_id=value).exists():
+            try:check_import_boundary(value)
+            except TourvisorError as error:raise forms.ValidationError(str(error))
+        return value
 
 class ConfirmForm(forms.Form):
     token=forms.CharField(widget=forms.HiddenInput)
@@ -30,6 +36,7 @@ class ConfirmForm(forms.Form):
             from .customer_matching import customer_matches
             match,candidates=customer_matches(customer_data)
             if candidates:
+                self.fields['update_customer']=forms.BooleanField(required=False,label='Обновить данные выбранного заказчика из Турвизора (во всех его договорах)')
                 self.fields['customer_choice']=forms.ChoiceField(label='Заказчик в CRM',choices=[('auto','Использовать совпавшего заказчика: '+str(match))] if match else [('', 'Выберите заказчика')],initial='auto' if match else '')
                 self.fields['customer_choice'].choices=list(self.fields['customer_choice'].choices)+[(str(c.pk),f'{c.name} · {c.main_phone} · {c.main_email}') for c in candidates]+[('new','Создать нового заказчика')]
 
@@ -83,7 +90,14 @@ def import_order(request):
                 moves=task_moves(existing,preview) if existing else []
                 initial={'token':stored['token'],'groups':list(GROUPS) if not existing else [s['key'] for s in sections if s['changed']],'end':preview['contract']['end'] or (existing.end if existing else None),'templates':TaskTemplate.objects.filter(active=True) if not existing else [],'move_tasks':[str(m['task'].pk) for m in moves]}
                 initial.update({f'due_{t.pk}':task_due(default_contract,t) for t in TaskTemplate.objects.all()})
-                confirm=ConfirmForm(request.POST if request.method=='POST' and request.POST.get('action')=='confirm' else None,initial=initial,moves=moves,existing=bool(existing),customer_data=preview['customer'])
+                confirm=ConfirmForm(request.POST if request.method=='POST' and request.POST.get('action') in ('confirm','review_customer') else None,initial=initial,moves=moves,existing=bool(existing),customer_data=preview['customer'])
+                if not existing and 'customer_choice' in confirm.fields:
+                    from .customer_matching import customer_matches
+                    match,candidates=customer_matches(preview['customer'])
+                    choice=confirm['customer_choice'].value()
+                    selected_customer=match if choice=='auto' else next((c for c in candidates if str(c.pk)==str(choice)),None)
+                    if selected_customer:
+                        sections=compare_order(None,preview,customer=selected_customer)
                 selected_groups=confirm['groups'].value() or []
                 for section in sections:section['selected']=section['key'] in selected_groups
                 selected_moves=confirm['move_tasks'].value() or []
@@ -112,11 +126,11 @@ def import_order(request):
                             updates.append({'id':move['task'].pk,'old':version['due'],'template':version['template'],'anchor':version.get('anchor'),'new':confirm.cleaned_data[f'move_due_{key}']})
                     contract=apply_order(stored['order'],request.user,set(confirm.cleaned_data['groups']),
                         templates=confirm.cleaned_data.get('templates'),dates={t.pk:confirm.cleaned_data.get(f'due_{t.pk}') for t in confirm.cleaned_data.get('templates',[])},
-                        expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'],task_updates=updates,customer_choice=confirm.cleaned_data.get('customer_choice','auto'))
+                        expected=stored['existing'],expected_version=stored['version'],end=confirm.cleaned_data['end'],task_updates=updates,customer_choice=confirm.cleaned_data.get('customer_choice','auto'),update_customer=confirm.cleaned_data.get('update_customer',False))
                     request.session.pop('tourvisor_preview',None)
                     messages.success(request,'Договор обновлён.' if existing else 'Договор импортирован.')
                     return redirect('contract_card',pk=contract.pk)
             except TourvisorError as e:messages.error(request,str(e))
-            except IntegrityError:messages.error(request,'Договор уже создан другим запросом. Загрузите предпросмотр повторно; дубликат не сохранён.')
+            except IntegrityError:messages.error(request,'Не удалось сохранить изменения из-за конфликта данных. Изменения отменены; загрузите сравнение повторно.')
             except OperationalError:messages.error(request,'База CRM временно занята. Попробуйте сохранить позже; частичный импорт не сохранён.')
     return render(request,'crm/import.html',{'lookup':lookup,'preview':preview,'confirm':confirm,'existing':existing,'comparison':comparison,'sections':sections,'moves':moves,'changed_count':sum(s['changed'] for s in sections)})

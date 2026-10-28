@@ -79,7 +79,7 @@ class MatchingTests(TestCase):
     def test_repeat_import_does_not_duplicate_reused_customer(self):
         customer=Customer.objects.create(**self.data)
         first=apply_order(self.order,self.user,set(GROUPS))
-        other=copy.deepcopy(self.order);other['id']='999123'
+        other=copy.deepcopy(self.order);other['id']='9999123'
         second=apply_order(other,self.user,set(GROUPS))
         self.assertEqual(first.customer_id,second.customer_id)
         apply_order(self.order,self.user,{'customer'},expected=first.pk)

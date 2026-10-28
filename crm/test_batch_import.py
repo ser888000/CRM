@@ -14,7 +14,7 @@ class BatchTests(TestCase):
     def setUp(self):
         self.user=get_user_model().objects.create_superuser('owner','owner@example.test','test-password-123');self.client.force_login(self.user)
         self.order=sample()
-        self.second=copy.deepcopy(self.order);self.second['id']='2193762'
+        self.second=copy.deepcopy(self.order);self.second['id']='2299359'
     def preview(self,entries=None):
         with patch('crm.batch_views.fetch_orders',return_value=entries if entries is not None else [self.order,self.second]):
             response=self.client.post('/tourvisor/batch/',{'limit':'25','lastid':''})
