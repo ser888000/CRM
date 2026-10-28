@@ -1,4 +1,4 @@
-// Общее меню и пакетная загрузка заявок. Автоматической полной цепочки нет.
+// Общее меню и полный проход пакета.
 Перем Connection,тзТипыКонтрагентов,тзМенеджеры,НадписьИнф,ГруппаCRM;
 Перем crmTransaction,crmStage;
 
@@ -49,7 +49,7 @@
             Если crmResult<>"created" Тогда crmResult="failed"; КонецЕсли;
         КонецПопытки;
         Если crmResult="created" Тогда
-            crmCreated=crmCreated+1; crmStatus="создана";
+            crmCreated=crmCreated+1; crmStatus=?(crmNode.ПолучитьАтрибут("KIND")="storno","создано Сторно","создана заявка");
         ИначеЕсли crmResult="existing" Тогда
             crmExistingCount=crmExistingCount+1; crmStatus="уже существует, пропущена";
         Иначе
@@ -58,7 +58,7 @@
         crmReport=crmReport+РазделительСтрок+"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+": "+crmStatus;
         Если ПустаяСтрока(crmReason)=0 Тогда crmReport=crmReport+"; "+crmReason; КонецЕсли;
     КонецЦикла;
-    crmSummary="CRM: заявки пакета — создано: "+Строка(crmCreated)+"; существующих пропущено: "+Строка(crmExistingCount)+"; не загружено: "+Строка(crmFailed);
+    crmSummary="CRM: заявки и сторно пакета — создано: "+Строка(crmCreated)+"; существующих пропущено: "+Строка(crmExistingCount)+"; не загружено: "+Строка(crmFailed);
     Сообщить(crmSummary); Сообщить(crmReport);
     crmOutcome=crmSummary;
     Если crmFailed>0 Тогда crmStopBatch=1; КонецЕсли;
@@ -139,7 +139,7 @@
         ИначеЕсли crmResult="existing" Тогда
             crmExistingCount=crmExistingCount+1; crmStatus="уже существует, пропущена";
         ИначеЕсли crmResult="not_ready" Тогда
-            crmNotReady=crmNotReady+1; crmStatus="пропущена: нет полной оплаты либо есть возвраты/зачёты";
+            crmNotReady=crmNotReady+1; crmStatus="пропущена: нет положительной оплаты или договор отражается сторно";
         Иначе
             crmFailed=crmFailed+1; crmStatus="не загружена — проверьте сообщения";
         КонецЕсли;
@@ -340,7 +340,9 @@
     crmStopBatch=0; crmPosted=0; crmSkipped=0; crmFailed=0;
     crmNodes=crmRoot.ВыбратьУзлы("CONTRACT");
     Для crmN=0 По crmNodes.КоличествоУзлов-1 Цикл
-        crmNode=crmNodes.ПолучитьУзел(crmN); crmPayments=crmNode.ВыбратьУзлы("PAYMENT"); crmHasPayment=0;
+        crmNode=crmNodes.ПолучитьУзел(crmN);
+        Если crmNode.ПолучитьАтрибут("KIND")="storno" Тогда crmSkipped=crmSkipped+1; Продолжить; КонецЕсли;
+        crmPayments=crmNode.ВыбратьУзлы("PAYMENT"); crmHasPayment=0;
         Для crmP=0 По crmPayments.КоличествоУзлов-1 Цикл
             crmPayment=crmPayments.ПолучитьУзел(crmP);
             Если Число(crmPayment.ПолучитьАтрибут("AMOUNT"))<>0 Тогда crmHasPayment=1; КонецЕсли;
@@ -403,7 +405,7 @@
     crmNodes=crmRoot.ВыбратьУзлы("CONTRACT"); crmOperations=crmRoot.ВыбратьУзлы("OPERATIONS/OPERATION");
     Если crmNodes.КоличествоУзлов<1 Тогда Предупреждение("В пакете нет договоров."); Возврат; КонецЕсли;
     crmPrompt="Загрузить весь пакет в тестовую копию1С? Договоров: "+Строка(crmNodes.КоличествоУзлов)+"; операций: "+Строка(crmOperations.КоличествоУзлов)+РазделительСтрок;
-    crmPrompt=crmPrompt+"Этапы: заявки, проведение заявок с оплатами, путёвки31декабря, отгрузки с исходными датами, клиентские оплаты и зачёты."+РазделительСтрок;
+    crmPrompt=crmPrompt+"Этапы: заявки и сторно, проведение заявок с оплатами, путёвки31декабря, отгрузки с исходными датами, клиентские оплаты и зачёты."+РазделительСтрок;
     crmPrompt=crmPrompt+"Существующие документы пропускаются. Настройки новых ТО и аналитики потребуется выбрать. При ошибке этапа общий проход остановится; уже созданные документы сохранятся. Повтор безопасно продолжит загрузку.";
     Если Вопрос(crmPrompt,4)<>6 Тогда Возврат; КонецЕсли;
     crmReport="";
@@ -420,8 +422,8 @@
         ИначеЕсли crmStep=5 Тогда
             crmBatchPayments(crmRoot,1,crmOutcome,crmStopBatch);
         КонецЕсли;
-        Если ПустаяСтрока(crmOutcome)=1 Тогда crmOutcome="Этап не завершён: проверьте сообщения"; crmStopBatch=1; КонецЕсли;
-        crmReport=crmReport+РазделительСтрок+crmOutcome;
+        Если ПустаяСтрока(crmOutcome)=1 Тогда crmOutcome="Этап "+Строка(crmStep)+" не завершён: проверьте сообщения"; crmStopBatch=1; КонецЕсли;
+        crmReport=crmReport+РазделительСтрок+"Этап "+Строка(crmStep)+": "+crmOutcome;
         Если crmStopBatch=1 Тогда crmReport=crmReport+РазделительСтрок+"Общий проход остановлен. Исправьте причину и повторите файл."; Прервать; КонецЕсли;
     КонецЦикла;
     Сообщить(crmReport); Предупреждение("Итог общего прохода:"+crmReport);

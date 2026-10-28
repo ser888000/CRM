@@ -4,7 +4,7 @@ import re
 import tempfile
 import unittest
 
-from build_1c_probe import unified_source
+from build_1c_probe import unified_source, strip_comments
 
 
 class UnifiedCompositionTests(unittest.TestCase):
@@ -38,6 +38,26 @@ class UnifiedCompositionTests(unittest.TestCase):
                     self.assertLessEqual(positions[call[1]], definition.start(),
                                          f'{definition[1]} calls {call[1]} before declaration')
         self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
+
+    def test_comment_stripping_preserves_1c_literals_and_line_numbers(self):
+        source = 'Сообщить("https://example.invalid/""quote"""); // comment\n// comment\n'
+        result = strip_comments(source)
+        self.assertIn('"https://example.invalid/""quote"""', result)
+        self.assertNotIn('comment', result)
+        self.assertEqual(result.count('\n'), source.count('\n'))
+
+    def test_storno_dispatch_and_four_posting_shape(self):
+        directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source = unified_source(directory)
+        body = source.split('Процедура a_crmImportStorno(', 1)[1].split('КонецПроцедуры', 1)[0]
+        self.assertEqual(body.count('crmOp.НоваяПроводка();'), 4)
+        for code in ('76.5', '90.1', '62.2', 'Н03', 'Н01'):
+            self.assertIn(f'СчетПоКоду("{code}")', body)
+        self.assertIn('[CRM_STORNO:', body)
+        self.assertIn('crmVerify.КоличествоПроводок()<>4', body)
+        importer = source.split('Процедура a_crmImport(', 1)[1].split('КонецПроцедуры', 1)[0]
+        self.assertLess(importer.index('a_crmImportStorno('), importer.index('crmAmount<=0'))
+        self.assertIn('crmMainAgreement(crmCustomer)', source)
 
     def test_composition_preserves_strings_comments_and_distinct_helpers(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -11,6 +11,6 @@
 {{ form.non_field_errors }}{{ form.exchange_year.as_field_group }}
 <button type="submit" {% if not ready %}disabled{% endif %}>Скачать XML для 1С</button>
 </form>
-{% if issues %}<details open><summary>Замечания: {{ issues|length }}</summary><ul>{% for issue in issues %}<li>{% if issue.number %}Договор {{ issue.number }}: {% endif %}{{ issue.message }}</li>{% endfor %}</ul></details>{% endif %}
+{% if issues %}<details open><summary>Замечания: {{ issues|length }}</summary><ul>{% for issue in issues %}<li>{% if issue.number %}{% if issue.contract_pk %}<a href="{% url 'contract_card' issue.contract_pk %}" target="_blank" rel="noopener">Договор {{ issue.number }}</a>{% else %}Договор {{ issue.number }}{% endif %}: {% endif %}{{ issue.message }}</li>{% endfor %}</ul></details>{% endif %}
 </article>
 {% endblock %}

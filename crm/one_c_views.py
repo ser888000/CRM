@@ -138,7 +138,9 @@ def journal_export(request):
             response['X-Content-Type-Options'] = 'nosniff'
             response['Cache-Control'] = 'private, no-store'
             return response
-    issues = [] if plan is None else [dict(issue, message=label(issue['code'])) for issue in plan['issues']]
+    contract_pks = dict(Contract.objects.filter(pk__in=ids).values_list('exchange_id', 'pk'))
+    contract_pks = {str(key): value for key, value in contract_pks.items()}
+    issues = [] if plan is None else [dict(issue, message=label(issue['code']), contract_pk=contract_pks.get(issue['contract'])) for issue in plan['issues']]
     return render(request, 'crm/one_c_journal_export.html', {
         'form': form, 'journal_count': len(ids), 'export_count': len(plan['contracts']) if plan else 0,
         'operation_count': len(plan['operations']) if plan else 0, 'issues': issues,

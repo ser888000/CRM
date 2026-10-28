@@ -60,6 +60,36 @@ class OneCExportTests(TestCase):
         self.assertEqual(row['shipment_status'], 'in_period')
         self.assertEqual(row['shipment_date'], '2026-01-20')
 
+    def test_negative_contract_is_storno_and_keeps_money_refund_separate(self):
+        ContractLine.objects.filter(contract=self.contract).delete()
+        ContractLine.objects.create(contract=self.contract, description='Возврат', amount=-100000)
+        Payment.objects.filter(contract=self.contract, kind='operator').delete()
+        method = PaymentMethod.objects.get(name='Тинькофф р/с')
+        Payment.objects.create(contract=self.contract, method=method, kind='operator_refund',
+                               date=date(2026, 1, 10), amount=70000)
+        refund = self.pay(amount=100000, kind='customer_refund')
+        plan = build_plan([self.contract.pk], 2026)
+        row = plan['contracts'][0]
+        self.assertEqual(row['kind'], 'storno')
+        self.assertEqual((row['amount'], row['cost'], row['commission']),
+                         ('-100000.00', '-70000.00', '-30000.00'))
+        self.assertEqual(row['shipment_status'], 'storno')
+        self.assertIsNone(row['shipment_date'])
+        self.assertNotIn('shipment_requires_review', {i['code'] for i in plan['issues']})
+        self.assertEqual(plan['operations'][0]['amount'], '-100000.00')
+        self.assertEqual(plan['operations'][0]['payments'], [str(refund.exchange_id)])
+        with ZipFile(io.BytesIO(package_bytes(plan))) as archive:
+            node = ET.fromstring(archive.read('exchange.xml')).find('CONTRACT')
+        self.assertEqual(node.get('KIND'), 'storno')
+        self.assertEqual(node.get('COMMISSION'), '-30000.00')
+
+    def test_negative_price_alone_does_not_authorize_storno(self):
+        ContractLine.objects.filter(contract=self.contract).delete()
+        ContractLine.objects.create(contract=self.contract, amount=-100000)
+        row = build_plan([self.contract.pk], 2026)['contracts'][0]
+        self.assertEqual(row['kind'], 'sale')
+        self.assertEqual(row['shipment_status'], 'requires_review')
+
     def test_bank_is_not_exported_but_counts_and_old_contract_is_included(self):
         self.contract.date = date(2025,12,1); self.contract.save()
         self.pay(method='Счет', amount=100000)

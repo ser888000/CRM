@@ -21,6 +21,7 @@ EXCLUDED = {'Кредит', 'МИР', 'МИР туроператору'}
 CLIENT_KINDS = ('customer', 'customer_refund')
 
 LABELS = {
+    'storno': 'Сторно отрицательного договора',
     'not_reached': 'Оплата не превысила себестоимость',
     'partially_paid': 'Договор ещё не полностью оплачен', 'requires_review': 'Нужна проверка', 'in_period': 'В выбранном году',
     'outside_period': 'В другом году', 'bank_statement_only': 'Уже отражается выпиской банка',
@@ -112,7 +113,7 @@ def build_plan(contract_ids, year, *, max_contracts=20):
             continue
         customer = {'id': str(contract.customer.exchange_id), 'name': contract.customer.name}
         seen_names[normalized_name(customer['name'])].add(customer['id'])
-        record = {'id': key, 'number': contract.number, 'date': contract.date.isoformat(),
+        record = {'kind': 'storno' if contract.amount < 0 and contract.cost < 0 and contract.profit < 0 else 'sale', 'id': key, 'number': contract.number, 'date': contract.date.isoformat(),
                   'customer': customer, 'operator': {'id': str(contract.operator.exchange_id), 'name': contract.operator.name},
                   'amount': money(contract.amount), 'cost': money(contract.cost),
                   'commission': money(contract.profit), 'currency': 'RUB',
@@ -164,7 +165,9 @@ def build_plan(contract_ids, year, *, max_contracts=20):
                 'contract': key, 'payer': item['payer'], 'payments': [item['id']],
                 'status': 'requires_cash_analytics' if cash else 'draft'})
         record['paid_amount'] = money(balance)
-        if uncertain or contract.cost <= 0 or contract.profit <= 0:
+        if record['kind'] == 'storno':
+            record['shipment_status'] = 'storno'
+        elif uncertain or contract.cost <= 0 or contract.profit <= 0:
             record['shipment_status'] = 'requires_review'
             issue('shipment_requires_review')
         elif balance < contract.amount:
@@ -208,7 +211,7 @@ def xml_bytes(plan):
     """Receiver XML without diagnostic sidecars."""
     root = ET.Element('CRM_TEST_EXPORT', VERSION='1', YEAR=str(plan['year']), TEST_ONLY='1')
     for c in plan['contracts']:
-        node = ET.SubElement(root, 'CONTRACT', ID=c['id'], NUMBER=c['number'], DATE=c['date'],
+        node = ET.SubElement(root, 'CONTRACT', ID=c['id'], KIND=c['kind'], NUMBER=c['number'], DATE=c['date'],
                              AMOUNT=c['amount'], PAID_AMOUNT=c['paid_amount'], COST=c['cost'], COMMISSION=c['commission'], CURRENCY='RUB',
                              VOUCHER_DATE=c['voucher_date'], SHIPMENT_DATE=c['shipment_date'] or '',
                              SHIPMENT_STATUS=c['shipment_status'])

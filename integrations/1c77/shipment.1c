@@ -215,6 +215,8 @@
         Если crmShipmentStatus<>"in_period" Тогда
             Если crmShipmentStatus="not_reached" Тогда
                 crmResult="not_ready"; crmResultReason="Оплата ещё не превысила себестоимость";
+            ИначеЕсли crmShipmentStatus="storno" Тогда
+                crmResult="not_ready"; crmResultReason="Отрицательный договор отражается операцией Сторно";
             ИначеЕсли crmShipmentStatus="partially_paid" Тогда
                 crmResult="not_ready"; crmResultReason="Договор ещё не полностью оплачен";
             ИначеЕсли crmShipmentStatus="outside_period" Тогда

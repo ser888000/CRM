@@ -58,6 +58,12 @@ def unified_source(directory):
     return header + common + '\n' + '\n\n'.join(blocks) + '\n\n' + entry
 
 
+def strip_comments(source_text):
+    """Keep literal // (e.g. URLs), escaped quotes and original line numbers."""
+    return re.sub(r'"(?:""|[^"\n])*"|//[^\n]*',
+                  lambda match: '' if match[0].startswith('//') else match[0], source_text)
+
+
 def build(donor, output, application=False, voucher=False, shipment=False, payment=False, unified=False):
     donor, output = Path(donor), Path(output)
     if donor.resolve() == output.resolve():
@@ -72,9 +78,10 @@ def build(donor, output, application=False, voucher=False, shipment=False, payme
               'application.1c' if application else 'probe.1c')
     source = Path(__file__).resolve().parents[1] / 'integrations/1c77' / module
     source_text = unified_source(source.parent) if unified else source.read_text()
-    if application or voucher or shipment:
+    if application or voucher or shipment or payment:
         common = (source.parent / 'application_services.1c').read_text()
         source_text = source_text.replace('\nФункция ', '\n' + common + '\nФункция ', 1)
+    source_text = strip_comments(source_text)
     text = source_text.replace('\r\n', '\n').replace('\n', '\r\n').encode('cp1251')
     compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
     module = compressor.compress(text) + compressor.flush()

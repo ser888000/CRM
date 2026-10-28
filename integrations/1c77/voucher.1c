@@ -203,7 +203,9 @@
     crmChoice=0; crmPosition=1;
         Если crmList.ВыбратьЗначение(crmChoice,"Выберите договор для первой путёвки",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
     КонецЕсли;
-    crmNode=crmNodes.ПолучитьУзел(crmChoice); crmID=crmNode.ПолучитьАтрибут("ID");
+    crmNode=crmNodes.ПолучитьУзел(crmChoice);
+    Если crmNode.ПолучитьАтрибут("KIND")="storno" Тогда crmResult="not_ready"; Сообщить("CRM: для сторно путёвка не создаётся."); Возврат; КонецЕсли;
+    crmID=crmNode.ПолучитьАтрибут("ID");
     Если crmUUID(crmID)=0 Тогда Предупреждение("Некорректный ключ CRM."); Возврат; КонецЕсли;
     crmStage="Поиск загруженной заявки";
     crmApplication=crmExisting(crmID);

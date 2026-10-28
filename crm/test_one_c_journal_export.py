@@ -43,6 +43,12 @@ class JournalOneCExportTests(TestCase):
         self.assertEqual({c.get('VOUCHER_DATE') for c in root.findall('CONTRACT')}, {'2026-12-31'})
         self.assertNotIn('zip', response['Content-Type'])
 
+    def test_warnings_link_to_exact_contract_in_new_tab(self):
+        contract = self.contract('WARNING')
+        self.client.force_login(self.admin)
+        response = self.client.get(self.url + '?start=2026-01-01&end=2026-01-31')
+        self.assertContains(response, f'href="/contracts/{contract.pk}/" target="_blank" rel="noopener"')
+
     def test_permissions_allow_accountant_but_deny_staff_and_direct_post(self):
         self.contract('ROLE')
         viewer = get_user_model().objects.create_user('viewer', is_staff=True)

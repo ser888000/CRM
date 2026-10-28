@@ -105,6 +105,22 @@
     Возврат crmApplication;
 КонецФункции
 
+Функция crmSettlementContext(crmRoot,crmID,crmPayer,crmApplication,crmCustomer,crmAgreement)
+    crmContract=crmContractNode(crmRoot,crmID); Если crmError(crmContract)=1 Тогда Возврат 0; КонецЕсли;
+    Если crmContract.ПолучитьАтрибут("KIND")="storno" Тогда
+        crmNodeCustomer=crmContract.ВыбратьУзел("CUSTOMER");
+        Если (crmPayer.ПолучитьАтрибут("ID")<>crmNodeCustomer.ПолучитьАтрибут("ID")) Или (crmName(crmPayer.ПолучитьАтрибут("NAME"))<>crmName(crmNodeCustomer.ПолучитьАтрибут("NAME"))) Тогда Предупреждение("Плательщик возврата отличается от заказчика."); Возврат 0; КонецЕсли;
+        crmApplication="";
+        Возврат crmReturnParties(crmContract,crmCustomer,crmAgreement);
+    КонецЕсли;
+    crmApplication=crmApplicationForPayment(crmRoot,crmID,crmPayer);
+    Если crmError(crmApplication)=1 Тогда Возврат 0; КонецЕсли;
+    crmDoc=СоздатьОбъект("Документ.Заявка"); crmDoc.НайтиДокумент(crmApplication);
+    crmCustomer=crmDoc.Плательщик; crmAgreement=crmDoc.ДоговорПлательщика;
+    Возврат 1;
+КонецФункции
+
+
 Функция crmValidatePayment(crmRoot,crmOperation,crmContractID,crmPaymentID,crmPayer,crmExpected,crmOffset)
     Если crmUUID(crmPaymentID)=0 Тогда Предупреждение("Некорректный ключ исходной оплаты."); Возврат 0; КонецЕсли;
     crmContract=crmContractNode(crmRoot,crmContractID);
@@ -226,12 +242,15 @@
     crmSourceID=crmSources.ПолучитьУзел(0).ПолучитьАтрибут("ID");
     crmExpected=?(crmReceipt=1,crmAmount,-crmAmount);
     Если crmValidatePayment(crmRoot,crmNode,crmContractID,crmSourceID,crmPayer,crmExpected,0)=0 Тогда Возврат; КонецЕсли;
-    crmApplication=crmApplicationForPayment(crmRoot,crmContractID,crmPayer);
-    Если crmError(crmApplication)=1 Тогда Возврат; КонецЕсли;
+    crmApplication=""; crmCustomer=""; crmAgreement="";
+    Если crmSettlementContext(crmRoot,crmContractID,crmPayer,crmApplication,crmCustomer,crmAgreement)=0 Тогда Возврат; КонецЕсли;
     Если crmAlreadyImported(crmID,crmSources)>0 Тогда crmResult="existing"; Возврат; КонецЕсли;
-    crmApp=СоздатьОбъект("Документ.Заявка"); crmApp.НайтиДокумент(crmApplication);
-    crmCustomer=crmApp.Плательщик; crmAgreement=crmApp.ДоговорПлательщика; crmCurrency=crmApp.Валюта;
-    Если (crmAgreement.Комиссия<>1) Или (ПустоеЗначение(crmCurrency)=1) Или (crmCurrency<>Рубль) Или (crmApp.Курс<>1) Тогда crmStop("Для кассового теста нужны комиссионное основание и валюта заявки."); Возврат; КонецЕсли;
+    crmCurrency=Рубль;
+    Если ПустоеЗначение(crmApplication)=0 Тогда
+        crmApp=СоздатьОбъект("Документ.Заявка"); crmApp.НайтиДокумент(crmApplication);
+        Если (crmApp.Валюта<>Рубль) Или (crmApp.Курс<>1) Тогда crmStop("Нужна рублёвая заявка."); Возврат; КонецЕсли;
+    КонецЕсли;
+    Если crmAgreement.Комиссия<>1 Тогда crmStop("Для кассового возврата нужно комиссионное основание. Справочник автоматически не изменяется."); Возврат; КонецЕсли;
     crmCashAccount=СчетПоКоду("50.1"); crmClientAccount=СчетПоКоду("62.2");
     Если (ПустоеЗначение(crmCashAccount)=1) Или (ПустоеЗначение(crmClientAccount)=1) Тогда crmStop("Не найдены счета 50.1/62.2."); Возврат; КонецЕсли;
     Если (crmClientAccount.КоличествоСубконто()<2) Или (crmClientAccount.ВидСубконто(1)<>ВидыСубконто.Контрагенты) Или (crmClientAccount.ВидСубконто(2)<>ВидыСубконто.Договоры) Или (crmCashAccount.КоличествоСубконто()<>1) Тогда
@@ -257,10 +276,9 @@
     НачатьТранзакцию(); crmTransaction=1;
     crmStage="Повторная проверка кассовой оплаты";
     Если crmAlreadyImported(crmID,crmSources)>0 Тогда crmResult="existing"; crmStop("Кассовая оплата уже существует."); Возврат; КонецЕсли;
-    crmRechecked=crmApplicationForPayment(crmRoot,crmContractID,crmPayer);
-    Если crmError(crmRechecked)=1 Тогда crmStop("Не прошла повторная проверка заявки."); Возврат; КонецЕсли;
-    crmApp.НайтиДокумент(crmApplication);
-    Если (crmRechecked<>crmApplication) Или (crmApp.Плательщик<>crmCustomer) Или (crmApp.ДоговорПлательщика<>crmAgreement) Или (crmApp.Валюта<>crmCurrency) Или (crmAgreement.Комиссия<>1) Тогда crmStop("Заявка или комиссионное основание изменились."); Возврат; КонецЕсли;
+    crmRechecked=""; crmCheckCustomer=""; crmCheckAgreement="";
+    Если crmSettlementContext(crmRoot,crmContractID,crmPayer,crmRechecked,crmCheckCustomer,crmCheckAgreement)=0 Тогда crmStop("Не прошла повторная проверка возврата."); Возврат; КонецЕсли;
+    Если (crmRechecked<>crmApplication) Или (crmCheckCustomer<>crmCustomer) Или (crmCheckAgreement<>crmAgreement) Или (crmAgreement.Комиссия<>1) Тогда crmStop("Основания кассового документа изменились."); Возврат; КонецЕсли;
     crmStage="Заполнение нового кассового ордера";
     crmCash=СоздатьОбъект("Документ."+crmKind); crmCash.Новый(); crmCash.ДатаДок=crmDate; crmCash.УстановитьНовыйНомер();
     crmCash.КоррСчет=crmClientAccount;
@@ -270,7 +288,7 @@
     crmCash.ФормироватьПроводки=1; crmCash.ДвижениеДенежныхСредств=crmMovement;
     // ДляНУ остаётся пустым: штатное комиссионное основание исключает повторный доход.
     // Возврат налогооблагаемого дохода здесь отдельно не придумываем.
-    crmCash.Основание=?(crmReceipt=1,"Оплата по ","Возврат по ")+Строка(crmApplication);
+    crmCash.Основание=?(crmReceipt=1,"Оплата по ","Возврат по ")+?(ПустоеЗначение(crmApplication)=1,"Основной договор",Строка(crmApplication));
     crmContract=crmContractNode(crmRoot,crmContractID);
     crmCash.Приложение="Договор CRM №"+crmContract.ПолучитьАтрибут("NUMBER");
     crmCash.Комментарий="[CRM_OP:"+crmID+"]"+РазделительСтрок+"[CRM_PAYMENT:"+crmSourceID+"]";
@@ -372,8 +390,8 @@
         Если crmSourceID=crmTargetID Тогда Предупреждение("Совпали ключи сторон зачёта."); Возврат; КонецЕсли;
         Если crmValidatePayment(crmRoot,crmNode,crmDebitID,crmSourceID,crmDebitPayer,-crmAmount,1)=0 Тогда Возврат; КонецЕсли;
         Если crmValidatePayment(crmRoot,crmNode,crmCreditID,crmTargetID,crmCreditPayer,crmAmount,1)=0 Тогда Возврат; КонецЕсли;
-        crmDebitApplication=crmApplicationForPayment(crmRoot,crmDebitID,crmDebitPayer);
-        Если crmError(crmDebitApplication)=1 Тогда Возврат; КонецЕсли;
+        crmDebitApplication=""; crmDebitCustomer=""; crmDebitAgreement="";
+        Если crmSettlementContext(crmRoot,crmDebitID,crmDebitPayer,crmDebitApplication,crmDebitCustomer,crmDebitAgreement)=0 Тогда Возврат; КонецЕсли;
     Иначе
         Если ((crmDebit<>"57.1") И (crmDebit<>"57.2")) Или (crmCredit<>"62.2") Или (crmNode.ПолучитьАтрибут("STATUS")<>"draft") Тогда Предупреждение("Не подтверждена схема оплаты карты/СБП."); Возврат; КонецЕсли;
         crmCreditID=crmNode.ПолучитьАтрибут("CONTRACT"); crmCreditPayer=crmNode.ВыбратьУзел("PAYER");
@@ -381,8 +399,8 @@
         crmSourceID=crmSources.ПолучитьУзел(0).ПолучитьАтрибут("ID");
         Если crmValidatePayment(crmRoot,crmNode,crmCreditID,crmSourceID,crmCreditPayer,crmAmount,0)=0 Тогда Возврат; КонецЕсли;
     КонецЕсли;
-    crmCreditApplication=crmApplicationForPayment(crmRoot,crmCreditID,crmCreditPayer);
-    Если crmError(crmCreditApplication)=1 Тогда Возврат; КонецЕсли;
+    crmCreditApplication=""; crmCreditCustomer=""; crmCreditAgreement="";
+    Если crmSettlementContext(crmRoot,crmCreditID,crmCreditPayer,crmCreditApplication,crmCreditCustomer,crmCreditAgreement)=0 Тогда Возврат; КонецЕсли;
     crmStage="Проверка повторной загрузки";
     Если crmAlreadyImported(crmID,crmSources)>0 Тогда crmResult="existing"; Возврат; КонецЕсли;
     crmDebitAccount=СчетПоКоду(crmDebit); crmCreditAccount=СчетПоКоду(crmCredit);
@@ -400,14 +418,10 @@
         КонецЕсли;
         Если crmError(crmAnalytics)=1 Тогда crmResult="cancelled"; Возврат; КонецЕсли;
     КонецЕсли;
-    crmCreditApp=СоздатьОбъект("Документ.Заявка"); crmCreditApp.НайтиДокумент(crmCreditApplication);
-    crmCreditCustomer=crmCreditApp.Плательщик; crmCreditAgreement=crmCreditApp.ДоговорПлательщика;
     crmPrompt="Создать одну ручную операцию в тестовой базе?"+РазделительСтрок;
     crmPrompt=crmPrompt+crmDateText+"; Дт "+crmDebit+" / Кт "+crmCredit+"; сумма "+Строка(crmAmount)+РазделительСтрок;
     crmPrompt=crmPrompt+"Кредит: "+Строка(crmCreditApplication)+"; "+Строка(crmCreditCustomer)+"; "+Строка(crmCreditAgreement);
     Если crmOffset=1 Тогда
-        crmDebitApp=СоздатьОбъект("Документ.Заявка"); crmDebitApp.НайтиДокумент(crmDebitApplication);
-        crmDebitCustomer=crmDebitApp.Плательщик; crmDebitAgreement=crmDebitApp.ДоговорПлательщика;
         crmPrompt=crmPrompt+РазделительСтрок+"Дебет (откуда зачёт): "+Строка(crmDebitApplication)+"; "+Строка(crmDebitCustomer)+"; "+Строка(crmDebitAgreement);
     Иначе
         Для crmN=1 По crmAnalytics.РазмерСписка() Цикл
@@ -421,11 +435,12 @@
     crmStage="Запись ручной операции";
     НачатьТранзакцию(); crmTransaction=1;
     Если crmAlreadyImported(crmID,crmSources)>0 Тогда crmResult="existing"; crmStop("Повторное создание отменено."); Возврат; КонецЕсли;
-    crmCreditApp.НайтиДокумент(crmCreditApplication);
-    Если (crmCreditApp.Плательщик<>crmCreditCustomer) Или (crmCreditApp.ДоговорПлательщика<>crmCreditAgreement) Или (crmCreditApp.Проведен()<>1) Или (crmCreditApp.ПометкаУдаления()=1) Тогда crmStop("Заявка изменилась. Загрузка отменена."); Возврат; КонецЕсли;
+    crmCheckApplication=""; crmCheckCustomer=""; crmCheckAgreement="";
+    Если crmSettlementContext(crmRoot,crmCreditID,crmCreditPayer,crmCheckApplication,crmCheckCustomer,crmCheckAgreement)=0 Тогда crmStop("Не прошла проверка основания операции."); Возврат; КонецЕсли;
+    Если (crmCheckApplication<>crmCreditApplication) Или (crmCheckCustomer<>crmCreditCustomer) Или (crmCheckAgreement<>crmCreditAgreement) Тогда crmStop("Основание операции изменилось."); Возврат; КонецЕсли;
     Если crmOffset=1 Тогда
-        crmDebitApp.НайтиДокумент(crmDebitApplication);
-        Если (crmDebitApp.Плательщик<>crmDebitCustomer) Или (crmDebitApp.ДоговорПлательщика<>crmDebitAgreement) Или (crmDebitApp.Проведен()<>1) Или (crmDebitApp.ПометкаУдаления()=1) Тогда crmStop("Исходная заявка зачёта изменилась."); Возврат; КонецЕсли;
+        Если crmSettlementContext(crmRoot,crmDebitID,crmDebitPayer,crmCheckApplication,crmCheckCustomer,crmCheckAgreement)=0 Тогда crmStop("Не прошла проверка источника зачёта."); Возврат; КонецЕсли;
+        Если (crmCheckApplication<>crmDebitApplication) Или (crmCheckCustomer<>crmDebitCustomer) Или (crmCheckAgreement<>crmDebitAgreement) Тогда crmStop("Источник зачёта изменился."); Возврат; КонецЕсли;
     КонецЕсли;
     crmComment="[CRM_OP:"+crmID+"]";
     Для crmN=0 По crmSources.КоличествоУзлов-1 Цикл
@@ -437,7 +452,7 @@
     crmStage="Номер новой операции"; crmOp.Документ.УстановитьНовыйНомер("");
     crmOperationNumber=crmOp.Документ.НомерДок;
     crmStage="Служебные метки новой операции"; crmOp.Документ.Комментарий=crmComment;
-    crmOp.Содержание="CRM: "+?(crmOffset=1,"Зачёт",?(crmAmount<0,"Возврат","Оплата"))+"; "+Строка(crmCreditApplication);
+    crmOp.Содержание="CRM: "+?(crmOffset=1,"Зачёт",?(crmAmount<0,"Возврат","Оплата"))+"; "+?(ПустоеЗначение(crmCreditApplication)=1,"Основной договор",Строка(crmCreditApplication));
     crmStage="Заполнение новой проводки";
     crmOp.НоваяПроводка(); crmOp.Дебет.Счет=crmDebitAccount; crmOp.Кредит.Счет=crmCreditAccount;
     crmOp.Кредит.Субконто(1,crmCreditCustomer); crmOp.Кредит.Субконто(2,crmCreditAgreement);
