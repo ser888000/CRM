@@ -39,6 +39,19 @@ class UnifiedCompositionTests(unittest.TestCase):
                                          f'{definition[1]} calls {call[1]} before declaration')
         self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
 
+    def test_zero_application_allowed_and_voucher_and_shipment_skip_before_lookup(self):
+        directory=Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source=unified_source(directory)
+        app=source.split('Процедура a_crmImport(',1)[1].split('КонецПроцедуры',1)[0]
+        self.assertIn('(crmAmount<0) Или (crmCost<0)',app)
+        for entry in ('v_crmImportVoucher','s_crmImportShipment'):
+            body=source.split('Процедура '+entry+'(',1)[1].split('КонецПроцедуры',1)[0]
+            zero=body.index('ПолучитьАтрибут("AMOUNT"))=0')
+            self.assertLess(zero,body.index('=crmExisting('))
+            self.assertIn('ПолучитьАтрибут("COST"))=0',body)
+            self.assertIn('ПолучитьАтрибут("COMMISSION"))=0',body)
+            self.assertIn('crmResult="not_ready"; Возврат;',body[zero:])
+
     def test_receiver_exposes_one_import_flow_and_keeps_error_reporting(self):
         directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
         source = unified_source(directory)
@@ -103,7 +116,7 @@ class UnifiedCompositionTests(unittest.TestCase):
         self.assertIn('[CRM_STORNO:', body)
         self.assertIn('crmVerify.КоличествоПроводок()<>4', body)
         importer = source.split('Процедура a_crmImport(', 1)[1].split('КонецПроцедуры', 1)[0]
-        self.assertLess(importer.index('a_crmImportStorno('), importer.index('crmAmount<=0'))
+        self.assertLess(importer.index('a_crmImportStorno('), importer.index('crmAmount<0'))
         self.assertIn('crmMainAgreement(crmCustomer)', source)
 
     def test_composition_preserves_strings_comments_and_distinct_helpers(self):

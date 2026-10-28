@@ -205,6 +205,9 @@
     КонецЕсли;
     crmNode=crmNodes.ПолучитьУзел(crmChoice);
     Если crmNode.ПолучитьАтрибут("KIND")="storno" Тогда crmResult="not_ready";  Возврат; КонецЕсли;
+    Если (Число(crmNode.ПолучитьАтрибут("AMOUNT"))=0) И (Число(crmNode.ПолучитьАтрибут("COST"))=0) И (Число(crmNode.ПолучитьАтрибут("COMMISSION"))=0) Тогда
+        crmResult="not_ready"; Возврат;
+    КонецЕсли;
     crmID=crmNode.ПолучитьАтрибут("ID");
     Если crmUUID(crmID)=0 Тогда Предупреждение("Некорректный ключ CRM."); Возврат; КонецЕсли;
     crmStage="Поиск загруженной заявки";

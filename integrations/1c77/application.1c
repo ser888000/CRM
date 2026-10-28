@@ -433,7 +433,7 @@
     crmCost=Число(crmNode.ПолучитьАтрибут("COST"));
     crmCommission=Число(crmNode.ПолучитьАтрибут("COMMISSION"));
     crmRow=crmRows.ПолучитьУзел(0);
-    Если (crmNode.ПолучитьАтрибут("CURRENCY")<>"RUB") Или (crmAmount<=0) Или (crmCost<0) Тогда
+    Если (crmNode.ПолучитьАтрибут("CURRENCY")<>"RUB") Или (crmAmount<0) Или (crmCost<0) Тогда
         Предупреждение("Проверьте рублёвую сумму и себестоимость."); Возврат;
     КонецЕсли;
     Если crmCost>crmAmount Тогда

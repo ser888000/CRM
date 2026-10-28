@@ -60,6 +60,25 @@ class OneCExportTests(TestCase):
         self.assertEqual(row['shipment_status'], 'in_period')
         self.assertEqual(row['shipment_date'], '2026-01-20')
 
+    def test_zero_contract_keeps_application_and_client_finances_without_shipment(self):
+        ContractLine.objects.filter(contract=self.contract).update(amount=0)
+        Payment.objects.filter(contract=self.contract,kind='operator').delete()
+        self.pay(amount=50000)
+        self.pay(amount=50000,kind='customer_refund',day=11)
+        plan=build_plan([self.contract.pk],2026)
+        row=plan['contracts'][0]
+        self.assertEqual((row['kind'],row['amount'],row['cost'],row['commission']),
+                         ('zero','0.00','0.00','0.00'))
+        self.assertEqual(row['shipment_status'],'zero')
+        self.assertIsNone(row['shipment_date'])
+        self.assertEqual([op['amount'] for op in plan['operations']],['50000.00','-50000.00'])
+        self.assertNotIn('shipment_requires_review',{i['code'] for i in plan['issues']})
+        with ZipFile(io.BytesIO(package_bytes(plan))) as archive:
+            node=ET.fromstring(archive.read('exchange.xml')).find('CONTRACT')
+        self.assertEqual(node.get('KIND'),'zero')
+        self.assertEqual(node.get('SHIPMENT_STATUS'),'zero')
+        self.assertEqual(node.find('ROW').get('AMOUNT'),'0.00')
+
     def test_negative_contract_is_storno_and_keeps_money_refund_separate(self):
         ContractLine.objects.filter(contract=self.contract).delete()
         ContractLine.objects.create(contract=self.contract, description='Возврат', amount=-100000)

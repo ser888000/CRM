@@ -21,6 +21,7 @@ EXCLUDED = {'Кредит', 'МИР', 'МИР туроператору'}
 CLIENT_KINDS = ('customer', 'customer_refund')
 
 LABELS = {
+    'zero': 'Нулевой договор: только заявка и клиентские операции',
     'storno': 'Сторно отрицательного договора',
     'not_reached': 'Оплата не превысила себестоимость',
     'partially_paid': 'Договор ещё не полностью оплачен', 'requires_review': 'Нужна проверка', 'in_period': 'В выбранном году',
@@ -113,7 +114,7 @@ def build_plan(contract_ids, year, *, max_contracts=20):
             continue
         customer = {'id': str(contract.customer.exchange_id), 'name': contract.customer.name}
         seen_names[normalized_name(customer['name'])].add(customer['id'])
-        record = {'kind': 'storno' if contract.amount < 0 and contract.cost < 0 and contract.profit < 0 else 'sale', 'id': key, 'number': contract.number, 'date': contract.date.isoformat(),
+        record = {'kind': 'zero' if contract.amount == 0 and contract.cost == 0 else 'storno' if contract.amount < 0 and contract.cost < 0 and contract.profit < 0 else 'sale', 'id': key, 'number': contract.number, 'date': contract.date.isoformat(),
                   'customer': customer, 'operator': {'id': str(contract.operator.exchange_id), 'name': contract.operator.name},
                   'amount': money(contract.amount), 'cost': money(contract.cost),
                   'commission': money(contract.profit), 'currency': 'RUB',
@@ -165,7 +166,9 @@ def build_plan(contract_ids, year, *, max_contracts=20):
                 'contract': key, 'payer': item['payer'], 'payments': [item['id']],
                 'status': 'requires_cash_analytics' if cash else 'draft'})
         record['paid_amount'] = money(balance)
-        if record['kind'] == 'storno':
+        if record['kind'] == 'zero':
+            record['shipment_status'] = 'zero'
+        elif record['kind'] == 'storno':
             record['shipment_status'] = 'storno'
         elif uncertain or contract.cost <= 0 or contract.profit <= 0:
             record['shipment_status'] = 'requires_review'
