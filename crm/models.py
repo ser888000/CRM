@@ -198,7 +198,9 @@ class Contract(models.Model):
     operator_paid = models.DateField('Дата полной оплаты ТО',null=True,blank=True)
     metrika_id = models.CharField('ID клиента Метрики',max_length=100,blank=True)
     notes = models.TextField('Примечание',blank=True)
-    class Meta: verbose_name='Договор'; verbose_name_plural='Договоры'
+    class Meta:
+        verbose_name='Договор'; verbose_name_plural='Договоры'
+        permissions=[('export_one_c','Выгрузка договоров в 1С')]
     def __str__(self): return self.number or f'Договор №{self.pk}'
     def clean(self):
         if self.start and self.end and self.end < self.start: raise ValidationError('Окончание тура раньше начала')

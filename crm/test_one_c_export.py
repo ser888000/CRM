@@ -46,9 +46,23 @@ class OneCExportTests(TestCase):
         self.assertEqual(plan, build_plan([self.contract.pk], 2026))
         self.assertEqual(len({o['id'] for o in plan['operations']}), 4)
 
+    def test_partial_payment_defers_shipment_but_keeps_original_crossing_when_settled(self):
+        self.pay(amount=40000, day=10)
+        self.pay(amount=40000, day=20)
+        row = build_plan([self.contract.pk], 2026)['contracts'][0]
+        self.assertEqual(row['shipment_status'], 'partially_paid')
+        self.assertIsNone(row['shipment_date'])
+        self.assertEqual((row['amount'], row['cost'], row['paid_amount']),
+                         ('100000.00', '70000.00', '80000.00'))
+        self.assertEqual(row['voucher_date'], '2026-12-31')
+        self.pay(amount=20000, day=25)
+        row = build_plan([self.contract.pk], 2026)['contracts'][0]
+        self.assertEqual(row['shipment_status'], 'in_period')
+        self.assertEqual(row['shipment_date'], '2026-01-20')
+
     def test_bank_is_not_exported_but_counts_and_old_contract_is_included(self):
         self.contract.date = date(2025,12,1); self.contract.save()
-        self.pay(method='Счет', amount=80000)
+        self.pay(method='Счет', amount=100000)
         plan = build_plan([self.contract.pk], 2026)
         self.assertEqual(plan['operations'], [])
         self.assertEqual(plan['contracts'][0]['shipment_date'], '2026-01-10')
@@ -78,7 +92,7 @@ class OneCExportTests(TestCase):
                          ['2026-12-31', '2026-12-31', '2026-12-31'])
 
     def test_voucher_year_end_uses_export_year_without_moving_other_dates(self):
-        payment = self.pay(amount=80000)
+        payment = self.pay(amount=100000)
         payment.date = date(2027, 1, 10); payment.save()
         plan = build_plan([self.contract.pk], 2027)
         contract = plan['contracts'][0]
@@ -167,7 +181,7 @@ class OneCExportTests(TestCase):
     def test_year_limits_and_previous_history_are_used(self):
         payment=self.pay(amount=80000)
         payment.date=date(2025,12,31);payment.save()
-        self.pay(amount=10000)
+        self.pay(amount=20000)
         plan=build_plan([self.contract.pk],2026)
         self.assertEqual(len(plan['operations']),1)
         self.assertEqual(plan['contracts'][0]['shipment_status'],'outside_period')

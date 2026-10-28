@@ -83,3 +83,64 @@ def page(request):
             return response
     return render(request, 'crm/one_c_export.html', {'form': form, 'year': year, 'query': query,
         'selected_count': len(selected_keys)})
+
+
+class JournalExportForm(forms.Form):
+    exchange_year = forms.IntegerField(label='Год клиентских операций', min_value=2026, max_value=2026, initial=2026)
+
+
+def can_export(user):
+    return user.is_active and user.has_perm('crm.view_contract') and user.has_perm('crm.export_one_c')
+
+
+@login_required
+@never_cache
+@require_http_methods(['GET', 'POST'])
+def journal_export(request):
+    from django.core.exceptions import PermissionDenied
+    from django.http import HttpResponse
+    from .contract_journal import journal_context
+    from .journal_period import prepare
+    from .views import DateRange
+    from .one_c_export import xml_bytes, label
+    if not can_export(request.user):
+        raise PermissionDenied
+    # Reuse the exact journal engine, including text, date and column filters.
+    # Never accept submitted IDs as a substitute for those filters.
+    from django.http import QueryDict
+    saved = request.session.get('contract_journal', '')
+    source = request.GET if request.GET or not saved else QueryDict(saved)
+    params = prepare(source, saved)
+    form = JournalExportForm(request.POST if request.method == 'POST' else {'exchange_year': 2026})
+    year = 2026
+    if request.method == 'POST' and form.is_valid():
+        year = form.cleaned_data['exchange_year']
+    with transaction.atomic():
+        context = journal_context(params, DateRange)
+        ids = [contract.pk for contract in context['rows']]
+        plan = None
+        if not context['dateform'].is_valid():
+            form.add_error(None, 'Исправьте даты в фильтре договоров.')
+        elif not ids:
+            form.add_error(None, 'По выбранным фильтрам договоров нет.')
+        else:
+            try:
+                plan = build_plan(ids, year, max_contracts=None)
+                content = xml_bytes(plan)
+                if not plan['contracts']:
+                    form.add_error(None, 'Все выбранные договоры исключены правилами выгрузки. Измените фильтр.')
+            except ValueError as exc:
+                form.add_error(None, str(exc))
+                plan = None
+        if request.method == 'POST' and form.is_valid() and plan is not None:
+            response = HttpResponse(content, content_type='application/xml; charset=windows-1251')
+            response['Content-Disposition'] = f'attachment; filename="crm-1c-{year}.xml"'
+            response['X-Content-Type-Options'] = 'nosniff'
+            response['Cache-Control'] = 'private, no-store'
+            return response
+    issues = [] if plan is None else [dict(issue, message=label(issue['code'])) for issue in plan['issues']]
+    return render(request, 'crm/one_c_journal_export.html', {
+        'form': form, 'journal_count': len(ids), 'export_count': len(plan['contracts']) if plan else 0,
+        'operation_count': len(plan['operations']) if plan else 0, 'issues': issues,
+        'back_query': params.urlencode(), 'ready': bool(plan and plan['contracts']),
+    })

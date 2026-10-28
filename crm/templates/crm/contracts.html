@@ -1,6 +1,7 @@
 {% extends 'crm/base.html' %}{% load static %}{% block extra_head %}<link rel="stylesheet" href="{% static 'crm/journal.css' %}?v=20261025period">{% endblock %}{% block content %}
 <h1>Договоры</h1>
 <a class="button" href="{% url 'contract_new' %}">+ Новый договор</a> <a class="button" href="{% url 'tourvisor_import' %}">Импорт из Турвизора</a> <a class="button secondary" href="{% url 'tourvisor_batch' %}">Групповая загрузка</a>
+{% if can_export_one_c %}<a class="button secondary" href="{% url 'one_c_journal_export' %}?{{ export_filter_query }}">Выгрузка в 1С</a>{% endif %}
 <form id="journal-filters" method="get">
 <div class="filters"><input name="customer" placeholder="Заказчик" aria-label="Заказчик" value="{{ request.GET.customer }}"><input name="email" placeholder="E-mail" aria-label="E-mail" value="{{ request.GET.email }}"><input name="phone" placeholder="Телефон" aria-label="Телефон" value="{{ request.GET.phone }}"><button>Применить</button><a href="{{ reset_filters_url }}">Сбросить</a></div>
 {% if search_all_dates %}<p class="muted" role="status">Поиск по всем датам. Выбранный период сохранён и вернётся после сброса условий.</p>{% endif %}{% include 'crm/journal_dates.html' %}

@@ -1,0 +1,16 @@
+{% extends 'crm/base.html' %}
+{% block title %}Выгрузка в 1С · CRM{% endblock %}
+{% block content %}
+<a href="{% url 'contracts' %}?{{ back_query }}">← К отфильтрованным договорам</a>
+<h1>Выгрузка в 1С</h1>
+<article class="section-card">
+<p>Используются применённые фильтры списка договоров, включая фильтры колонок. Выбрано договоров: <strong>{{ journal_count }}</strong>.</p>
+<p>В XML: договоров {{ export_count }}, клиентских операций {{ operation_count }}. Путёвки — 31 декабря года выгрузки. Даты заявок, оплат и отгрузок сохраняются.</p>
+<p>Для загрузки используйте единый загрузчик 1С. Новый общий режим проверяем на копии базы за 2026 год. Существующие ручные документы без служебных меток нужно сверять отдельно.</p>
+<form method="post" action="{% url 'one_c_journal_export' %}?{{ back_query }}">{% csrf_token %}
+{{ form.non_field_errors }}{{ form.exchange_year.as_field_group }}
+<button type="submit" {% if not ready %}disabled{% endif %}>Скачать XML для 1С</button>
+</form>
+{% if issues %}<details open><summary>Замечания: {{ issues|length }}</summary><ul>{% for issue in issues %}<li>{% if issue.number %}Договор {{ issue.number }}: {% endif %}{{ issue.message }}</li>{% endfor %}</ul></details>{% endif %}
+</article>
+{% endblock %}

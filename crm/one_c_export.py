@@ -22,7 +22,7 @@ CLIENT_KINDS = ('customer', 'customer_refund')
 
 LABELS = {
     'not_reached': 'Оплата не превысила себестоимость',
-    'requires_review': 'Нужна проверка', 'in_period': 'В выбранном году',
+    'partially_paid': 'Договор ещё не полностью оплачен', 'requires_review': 'Нужна проверка', 'in_period': 'В выбранном году',
     'outside_period': 'В другом году', 'bank_statement_only': 'Уже отражается выпиской банка',
     'excluded_method': 'Способ исключён из обмена', 'blocked': 'Нужно уточнение',
     'planned': 'В проекте операций', 'review': 'Нужна проверка',
@@ -75,9 +75,9 @@ def operation_key(kind, *keys):
     return str(uuid.uuid5(uuid.NAMESPACE_URL, 'aborigen-crm/1c/v1/' + kind + '/' + '/'.join(sorted(map(str, keys)))))
 
 
-def build_plan(contract_ids, year):
+def build_plan(contract_ids, year, *, max_contracts=20):
     ids = sorted(set(contract_ids))
-    if not ids or len(ids) > 20:
+    if not ids or (max_contracts is not None and len(ids) > max_contracts):
         raise ValueError('Выберите от 1 до 20 договоров для теста.')
     if not 1900 <= year <= 2100:
         raise ValueError('Укажите год от 1900 до 2100.')
@@ -163,9 +163,12 @@ def build_plan(contract_ids, year):
                 'credit': ('50.1' if amount < 0 else '62.2') if cash else '62.2',
                 'contract': key, 'payer': item['payer'], 'payments': [item['id']],
                 'status': 'requires_cash_analytics' if cash else 'draft'})
+        record['paid_amount'] = money(balance)
         if uncertain or contract.cost <= 0 or contract.profit <= 0:
             record['shipment_status'] = 'requires_review'
             issue('shipment_requires_review')
+        elif balance < contract.amount:
+            record['shipment_status'] = 'partially_paid'
         elif crossed:
             record['shipment_date'] = crossed.isoformat()
             record['shipment_status'] = 'in_period' if crossed.year == year else 'outside_period'
@@ -201,12 +204,12 @@ def build_plan(contract_ids, year):
     return plan
 
 
-def package_bytes(plan):
-    """Own review format, deliberately NOT labelled as stock SAMO import XML."""
+def xml_bytes(plan):
+    """Receiver XML without diagnostic sidecars."""
     root = ET.Element('CRM_TEST_EXPORT', VERSION='1', YEAR=str(plan['year']), TEST_ONLY='1')
     for c in plan['contracts']:
         node = ET.SubElement(root, 'CONTRACT', ID=c['id'], NUMBER=c['number'], DATE=c['date'],
-                             AMOUNT=c['amount'], COST=c['cost'], COMMISSION=c['commission'], CURRENCY='RUB',
+                             AMOUNT=c['amount'], PAID_AMOUNT=c['paid_amount'], COST=c['cost'], COMMISSION=c['commission'], CURRENCY='RUB',
                              VOUCHER_DATE=c['voucher_date'], SHIPMENT_DATE=c['shipment_date'] or '',
                              SHIPMENT_STATUS=c['shipment_status'])
         ET.SubElement(node, 'CUSTOMER', ID=c['customer']['id'], NAME=c['customer']['name'])
@@ -234,6 +237,12 @@ def package_bytes(plan):
         ET.fromstring(xml)
     except ET.ParseError as exc:
         raise ValueError('В выбранных записях есть недопустимые для XML символы. Исправьте их перед выгрузкой.') from exc
+    return xml
+
+
+def package_bytes(plan):
+    """Legacy diagnostic package; ordinary exports download XML only."""
+    xml = xml_bytes(plan)
     output = io.BytesIO()
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:
         archive.writestr('plan.json', json.dumps(plan, ensure_ascii=False, indent=2).encode())

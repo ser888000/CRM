@@ -195,17 +195,17 @@
     Если crmRoot.Наименование<>"CRM_TEST_EXPORT" Тогда Предупреждение("Это не пакет CRM."); Возврат; КонецЕсли;
     Если (crmRoot.ПолучитьАтрибут("VERSION")<>"1") Или (crmRoot.ПолучитьАтрибут("TEST_ONLY")<>"1") Тогда Предупреждение("Версия пакета не поддерживается."); Возврат; КонецЕсли;
     crmNodes=crmRoot.ВыбратьУзлы("CONTRACT");
-    Если (crmNodes.КоличествоУзлов<1) Или (crmNodes.КоличествоУзлов>20) Тогда Предупреждение("Выберите тестовый пакет до 20 договоров."); Возврат; КонецЕсли;
+    Если crmNodes.КоличествоУзлов<1 Тогда Предупреждение("В пакете нет договоров."); Возврат; КонецЕсли;
+    Если crmBatch=1 Тогда
+        Если (crmBatchIndex<0) Или (crmBatchIndex>=crmNodes.КоличествоУзлов) Тогда Возврат; КонецЕсли;
+        crmChoice=crmBatchIndex;
+    Иначе
     crmList=СоздатьОбъект("СписокЗначений");
     Для crmN=0 По crmNodes.КоличествоУзлов-1 Цикл
         crmNode=crmNodes.ПолучитьУзел(crmN);
         crmList.ДобавитьЗначение(crmN,"Договор "+crmNode.ПолучитьАтрибут("NUMBER")+" от "+crmNode.ПолучитьАтрибут("DATE"));
     КонецЦикла;
     crmChoice=0; crmPosition=1;
-    Если crmBatch=1 Тогда
-        Если (crmBatchIndex<0) Или (crmBatchIndex>=crmNodes.КоличествоУзлов) Тогда Возврат; КонецЕсли;
-        crmChoice=crmBatchIndex;
-    Иначе
         Если crmList.ВыбратьЗначение(crmChoice,"Выберите договор для первой отгрузки",crmPosition,,1)=0 Тогда Возврат; КонецЕсли;
     КонецЕсли;
     crmNode=crmNodes.ПолучитьУзел(crmChoice); crmID=crmNode.ПолучитьАтрибут("ID");
@@ -215,6 +215,8 @@
         Если crmShipmentStatus<>"in_period" Тогда
             Если crmShipmentStatus="not_reached" Тогда
                 crmResult="not_ready"; crmResultReason="Оплата ещё не превысила себестоимость";
+            ИначеЕсли crmShipmentStatus="partially_paid" Тогда
+                crmResult="not_ready"; crmResultReason="Договор ещё не полностью оплачен";
             ИначеЕсли crmShipmentStatus="outside_period" Тогда
                 crmResult="not_ready"; crmResultReason="Дата отгрузки вне выбранного года";
             ИначеЕсли crmShipmentStatus="requires_review" Тогда

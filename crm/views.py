@@ -32,6 +32,9 @@ def contracts(request):
         for key in list(saved):
             if not any(saved.getlist(key)):del saved[key]
         request.session['contract_journal']=saved.urlencode()
+    from .one_c_views import can_export
+    context['can_export_one_c']=can_export(request.user)
+    context['export_filter_query']=params.urlencode()
     return render(request,'crm/contracts.html',context)
 
 class DateRange(forms.Form):
