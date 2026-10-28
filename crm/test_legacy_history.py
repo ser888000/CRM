@@ -97,7 +97,7 @@ class HistoryTests(TestCase):
             self.assertEqual(self.client.get(reverse('legacy_history')).status_code,403)
             self.assertEqual(self.client.get(reverse('legacy_history_status')).status_code,403)
             user.is_superuser=True;user.save()
-            self.assertContains(self.client.get(reverse('legacy_history')),'Тренировочная загрузка истории')
+            self.assertContains(self.client.get(reverse('legacy_history')),'Загрузка истории')
             csrf_client=Client(enforce_csrf_checks=True);csrf_client.force_login(user)
             self.assertEqual(csrf_client.post(reverse('legacy_history'),{}).status_code,403)
 

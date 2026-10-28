@@ -2,3 +2,5 @@
 .app-nav .nav-text{font-size:inherit;width:auto;text-align:left}#sidebar-toggle{margin-top:16px;padding:7px 5px;background:transparent;color:#c1d4cb;font-size:12px;justify-content:flex-start}
 @media(min-width:761px){body.sidebar-collapsed .app-sidebar{width:76px;padding:24px 12px}body.sidebar-collapsed .app-workspace{margin-left:76px}body.sidebar-collapsed .brand>span:last-child,body.sidebar-collapsed .nav-label,body.sidebar-collapsed .nav-text,body.sidebar-collapsed .user-chip>span:last-child{display:none}body.sidebar-collapsed .app-nav{margin-top:20px}body.sidebar-collapsed .app-nav a{padding:12px;justify-content:center}body.sidebar-collapsed #sidebar-toggle{justify-content:center;font-size:20px}body.sidebar-collapsed .brand{justify-content:center}body.sidebar-collapsed .user-chip{padding:18px 0;justify-content:center}body.sidebar-collapsed .sidebar-bottom>a{text-align:center;font-size:20px}body.sidebar-collapsed .logout-button{width:100%;font-size:20px}}
 @media(max-width:760px){#sidebar-toggle{display:none}}
+
+.field:has(textarea.customer-notes){grid-column:1 / -1}textarea.customer-notes{height:auto}

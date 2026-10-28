@@ -39,6 +39,18 @@ class UnifiedCompositionTests(unittest.TestCase):
                                          f'{definition[1]} calls {call[1]} before declaration')
         self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
 
+    def test_receiver_exposes_one_import_flow_and_keeps_error_reporting(self):
+        directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source = unified_source(directory)
+        menu = source.split('Процедура crmUnified()', 1)[1].split('КонецПроцедуры', 1)[0]
+        self.assertIn('crmWholePackage();', menu)
+        self.assertNotIn('ВыбратьЗначение', menu)
+        self.assertNotIn('crmMenu', menu)
+        self.assertNotIn('Сообщить("Договор CRM:', source)
+        self.assertNotIn('Сообщить("CRM: оплата уже связана', source)
+        self.assertIn('Сообщить("CRM: договор "+crmNode.ПолучитьАтрибут("NUMBER")+": "+crmMismatch)', source)
+        self.assertIn('Если crmFailed>0 Тогда Сообщить(crmReport)', source)
+
     def test_agreement_search_checks_owner_and_repair_is_narrow(self):
         directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
         source = unified_source(directory)

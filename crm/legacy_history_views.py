@@ -4,6 +4,7 @@ from django import forms
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse,FileResponse
 from django.shortcuts import render,redirect,get_object_or_404
+from django.views.decorators.http import require_POST
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
 from .update_views import require_admin
@@ -14,7 +15,7 @@ from .models import LegacyImportRun,LegacyRecord
 class HistoryPackageForm(forms.Form):
     package=forms.FileField(label='Подготовленный ZIP истории',widget=forms.FileInput(attrs={'accept':'.zip'}))
     replace=forms.BooleanField(required=False,label='Очистить тренировочные данные перед загрузкой: Договоры, Задачи, Финансы, Заказчики, Туристы и остальные справочники. Сохранить Библиотеку, Шаблоны задач, Операции, Валюты, Города вылета и Страны.')
-    confirmed=forms.BooleanField(label='Подтверждаю выбранный режим тренировочной загрузки. Перед изменениями будет сохранена резервная копия.')
+    confirmed=forms.BooleanField(label='Подтверждаю выбранный режим загрузки. Перед изменениями будет сохранена резервная копия.')
     def clean_package(self):
         value=self.cleaned_data['package']
         if value.size>MAX_PACKAGE:raise forms.ValidationError('Пакет должен быть не больше 8 МБ.')
@@ -52,3 +53,16 @@ def source(request,pk):
     payload={'table':record.table,'source_id':record.source_id,'fields':record.payload}
     response=FileResponse(io.BytesIO(json.dumps(payload,ensure_ascii=False,indent=2).encode()),as_attachment=True,filename=f'legacy-source-{record.pk}.json',content_type='application/json')
     response['X-Content-Type-Options']='nosniff';return response
+
+
+@login_required
+@require_POST
+@never_cache
+def clear(request):
+    require_admin(request.user)
+    from django.contrib import messages
+    try:
+        start_job(None,request.user,clear_only=True)
+    except (ValueError,OSError):
+        messages.error(request,'Не удалось запустить очистку. Дождитесь завершения текущей операции и проверьте состояние сервера.')
+    return redirect('legacy_history')

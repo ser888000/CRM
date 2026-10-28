@@ -59,7 +59,7 @@ def state():
     return {'job':key,**result}
 
 
-def start_job(upload,actor,replace=False):
+def start_job(upload,actor,replace=False,clear_only=False):
     if settings.DATABASES['default']['ENGINE']!='django.db.backends.sqlite3':raise ValueError('Для этого варианта загрузки требуется резервное копирование SQLite.')
     from .update_views import state as update_state
     if update_state().get('busy'):raise ValueError('Сначала дождитесь завершения обновления CRM.')
@@ -68,23 +68,33 @@ def start_job(upload,actor,replace=False):
         fcntl.flock(lock,fcntl.LOCK_EX)
         if state().get('state') in ('queued','running'):raise ValueError('Загрузка уже выполняется. Дождитесь результата.')
         key=str(uuid.uuid4());job=job_folder(key);job.mkdir(mode=0o700)
-        write_json(job/'meta.json',{'actor_id':actor.pk,'replace':bool(replace)})
-        fd=os.open(job/'package.zip',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-        with os.fdopen(fd,'wb') as output:
-            size=0
-            for chunk in upload.chunks():
-                size+=len(chunk)
-                if size>8*1024*1024:raise ValueError('Пакет должен быть не больше 8 МБ.')
-                output.write(chunk)
-        write_json(job/'status.json',{'state':'queued','message':'Пакет принят. Проверяем данные.','started':timezone.now().isoformat()})
+        write_json(job/'meta.json',{'actor_id':actor.pk,'replace':bool(replace),'clear_only':bool(clear_only)})
+        if not clear_only:
+            fd=os.open(job/'package.zip',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'wb') as output:
+                size=0
+                for chunk in upload.chunks():
+                    size+=len(chunk)
+                    if size>8*1024*1024:raise ValueError('Пакет должен быть не больше 8 МБ.')
+                    output.write(chunk)
+        write_json(job/'status.json',{'state':'queued','message':'Очистка запрошена. Сохраняем резервную копию.' if clear_only else 'Пакет принят. Проверяем данные.','started':timezone.now().isoformat()})
         # Do not write stdout/stderr: Django tracebacks can include personal values.
         try:
             process=subprocess.Popen([sys.executable,str(settings.BASE_DIR/'manage.py'),'import_legacy_history','--job',key],cwd=settings.BASE_DIR,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,close_fds=True,env={**os.environ,'CRM_DATABASE_PATH':str(settings.DATABASES['default']['NAME']),'CRM_LEGACY_IMPORT_DIR':str(base)})
         except OSError:
             (job/'package.zip').unlink(missing_ok=True);raise ValueError('Не удалось запустить загрузку.')
-        write_json(job/'meta.json',{'actor_id':actor.pk,'pid':process.pid,'replace':bool(replace)})
+        write_json(job/'meta.json',{'actor_id':actor.pk,'pid':process.pid,'replace':bool(replace),'clear_only':bool(clear_only)})
         write_json(base/'active.json',{'job':key})
         return key
+
+
+def backup_database(job):
+    db=Path(settings.DATABASES['default']['NAME'])
+    backup=job/'before.sqlite3'
+    fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.close(fd)
+    with sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True) as src,sqlite3.connect(backup) as dest:
+        src.backup(dest)
+    return backup
 
 
 def run_job(key):
@@ -100,21 +110,23 @@ def run_job(key):
         started=timezone.now().isoformat()
         def progress(message):write_json(job/'status.json',{'state':'running','message':message,'started':started})
         try:
-            progress('Проверяем структуру, связи и суммы')
-            with (job/'package.zip').open('rb') as file:data=load_history(file)
             meta=read_json(job/'meta.json')
-            replace=meta.get('replace',False)
-            if replace and data.get('format')!='aborigen-legacy-history-v2':raise HistoryImportError('Для очистки и повторной загрузки нужен новый пакет истории версии 2.')
-            _,_,report=prepare_history(data)
-            write_json(job/'preflight.json',report)
-            progress('Сохраняем резервную копию базы перед загрузкой')
+            if not meta.get('clear_only'):
+                progress('Проверяем структуру, связи и суммы')
+                with (job/'package.zip').open('rb') as file:data=load_history(file)
+                replace=meta.get('replace',False)
+                if replace and data.get('format')!='aborigen-legacy-history-v2':raise HistoryImportError('Для очистки и повторной загрузки нужен новый пакет истории версии 2.')
+                _,_,report=prepare_history(data)
+                write_json(job/'preflight.json',report)
+            progress('Сохраняем резервную копию базы')
             connections.close_all()
-            db=Path(settings.DATABASES['default']['NAME'])
-            backup=job/'before.sqlite3'
-            fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.close(fd)
-            with sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True) as src,sqlite3.connect(backup) as dest:src.backup(dest)
+            backup_database(job)
             actor=get_user_model().objects.get(pk=read_json(job/'meta.json')['actor_id'],is_active=True,is_superuser=True)
-            from .legacy_reset import replace_history
+            from .legacy_reset import replace_history,clear_history
+            if meta.get('clear_only'):
+                counts=clear_history(actor,progress)
+                write_json(job/'status.json',{'state':'completed','message':'База очищена. Можно загружать актуальную историю. Сохранённые разделы остались на месте.','started':started,'finished':timezone.now().isoformat(),'report':{'cleared_counts':counts}})
+                return
             run,created=(replace_history if replace else apply_history)(data,actor,progress)
             write_json(job/'status.json',{'state':'completed','message':'Тренировочная история загружена.' if created else 'Этот снимок уже загружен. Дубликаты не созданы.','started':started,'finished':timezone.now().isoformat(),'run_id':run.pk,'report':run.summary})
         except HistoryImportError as error:

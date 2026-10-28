@@ -89,6 +89,7 @@ class CustomerForm(forms.ModelForm):
         self.order_fields(['kind','company_name','inn','kpp','ogrn','legal_address','bank_name','bik','account','correspondent_account','representative','representative_basis','surname','given_name','patronymic','name','birthday','main_phone','phones','main_email','emails','passport_type','passport_number','passport_issued','passport_issued_by','passport_code','address','passport'])
         for field in self.fields.values():
             if isinstance(field.widget,forms.Textarea):field.widget.attrs['rows']=3
+        self.fields['passport'].widget.attrs.update({'rows':15,'class':'customer-notes'})
     def clean(self):
         data=super().clean()
         data['passport_type']=data.get('passport_type') or (self.instance.passport_type if self.instance.pk else '1')

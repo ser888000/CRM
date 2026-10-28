@@ -4,11 +4,8 @@ from . import models as m
 from .legacy_history import prepare_history,apply_history,HistoryImportError
 
 @transaction.atomic
-def replace_history(data,actor=None,progress=lambda message:None):
-    if data.get('format')!='aborigen-legacy-history-v2':raise HistoryImportError('Для новой загрузки выберите новый пакет истории (версия 2).')
-    # Validate before deleting anything; failure anywhere rolls the entire replacement back.
-    prepare_history(data)
-    progress('Очищаем тренировочные данные; библиотека и исключения сохраняются')
+def clear_history(actor=None,progress=lambda message:None):
+    progress('Очищаем данные; библиотека и сохранённые справочники остаются')
     templates=[]
     for t in m.TaskTemplate.objects.select_related('task_type'):
         if t.task_type_id:
@@ -31,6 +28,15 @@ def replace_history(data,actor=None,progress=lambda message:None):
         if any(key in values for key in ('contract_journal','finance_journal','task_journal','customer_journal')):
             for key in ('contract_journal','finance_journal','task_journal','customer_journal'):values.pop(key,None)
             session.session_data=SessionStore().encode(values);session.save(update_fields=['session_data'])
+    m.AuditEvent.objects.create(actor=actor,object_type='crm.LegacyImportRun',object_id='',action='training_history_cleared',changes={'cleared_counts':counts})
+    return counts
+
+
+@transaction.atomic
+def replace_history(data,actor=None,progress=lambda message:None):
+    if data.get('format')!='aborigen-legacy-history-v2':raise HistoryImportError('Для новой загрузки выберите новый пакет истории (версия 2).')
+    prepare_history(data)
+    counts=clear_history(actor,progress)
     run,created=apply_history(data,actor,progress)
     run.summary={**run.summary,'replaced_training':True,'cleared_counts':counts};run.save(update_fields=['summary'])
     m.AuditEvent.objects.create(actor=actor,object_type='crm.LegacyImportRun',object_id=str(run.pk),action='training_history_replaced',changes={'cleared_counts':counts})
