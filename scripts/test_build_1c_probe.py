@@ -39,6 +39,17 @@ class UnifiedCompositionTests(unittest.TestCase):
                                          f'{definition[1]} calls {call[1]} before declaration')
         self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
 
+    def test_missing_main_agreement_is_created_with_owner_and_commission(self):
+        directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source = unified_source(directory)
+        body = source.split('Функция crmMainAgreement(', 1)[1].split('КонецФункции', 1)[0]
+        self.assertEqual(body.count('crmFindMainAgreement(crmOwner)'), 2)
+        self.assertLess(body.index('crmFindMainAgreement(crmOwner)'), body.index('crmRef.Новый()'))
+        self.assertIn('crmRef.ИспользоватьВладельца(crmOwner)', body)
+        self.assertIn('crmRef.Комиссия=1', body)
+        self.assertIn('crmRef.Владелец<>crmOwner', body)
+        self.assertIn('ОтменитьТранзакцию()', body)
+
     def test_comment_stripping_preserves_1c_literals_and_line_numbers(self):
         source = 'Сообщить("https://example.invalid/""quote"""); // comment\n// comment\n'
         result = strip_comments(source)
