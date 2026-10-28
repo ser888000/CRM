@@ -4,3 +4,5 @@
 @media(max-width:760px){#sidebar-toggle{display:none}}
 
 .field:has(textarea.customer-notes){grid-column:1 / -1}textarea.customer-notes{height:auto}
+
+.brand-symbol{overflow:hidden;flex-shrink:0}.brand-symbol img{display:block;width:100%;height:100%;object-fit:contain;border-radius:inherit}
