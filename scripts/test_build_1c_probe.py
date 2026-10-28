@@ -39,6 +39,17 @@ class UnifiedCompositionTests(unittest.TestCase):
                                          f'{definition[1]} calls {call[1]} before declaration')
         self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
 
+    def test_batch_posting_reads_settlement_catalogs_and_identifies_mismatch(self):
+        directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source = unified_source(directory)
+        body = source.split('Процедура crmPreparePaymentApplications(', 1)[1].split('КонецПроцедуры', 1)[0]
+        self.assertIn('crmPayAgreement.НайтиЭлемент(crmApp.ДоговорПлательщика)', body)
+        self.assertIn('crmTOAgreement.НайтиЭлемент(crmApp.ДоговорОператора)', body)
+        self.assertIn('crmPayerRef.НайтиЭлемент(crmApp.Плательщик)', body)
+        self.assertNotIn('crmApp.ДоговорПлательщика.Владелец', body)
+        self.assertIn('crmPayAgreement.Комиссия<>1', body)
+        self.assertIn('crmNode.ПолучитьАтрибут("NUMBER")+": "+crmMismatch', body)
+
     def test_missing_main_agreement_is_created_with_owner_and_commission(self):
         directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
         source = unified_source(directory)

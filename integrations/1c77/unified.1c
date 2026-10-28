@@ -365,10 +365,21 @@
             Если (ПустоеЗначение(crmApp.Плательщик)=1) Или (ПустоеЗначение(crmApp.ТурОператор)=1) Или (ПустоеЗначение(crmApp.ДоговорПлательщика)=1) Или (ПустоеЗначение(crmApp.ДоговорОператора)=1) Тогда
                 crmFailed=crmFailed+1; Сообщить("CRM: не заполнены стороны или основания заявки"); Продолжить;
             КонецЕсли;
-            crmCustomerNode=crmNode.ВыбратьУзел("CUSTOMER"); crmCustomerName=crmApp.Плательщик.ПолнНаименование;
-            Если ПустаяСтрока(crmCustomerName)=1 Тогда crmCustomerName=crmApp.Плательщик.Наименование; КонецЕсли;
-            Если (a_crmName(crmCustomerName)<>a_crmName(crmCustomerNode.ПолучитьАтрибут("NAME"))) Или (crmApp.ДоговорПлательщика.Владелец<>crmApp.Плательщик) Или (crmApp.ДоговорОператора.Владелец<>crmApp.ТурОператор) Или (crmApp.ДоговорПлательщика.Комиссия<>1) Тогда
-                crmFailed=crmFailed+1; Сообщить("CRM: заказчик или основания заявки не совпали с пакетом"); Продолжить;
+            crmCustomerNode=crmNode.ВыбратьУзел("CUSTOMER");
+            crmPayerRef=СоздатьОбъект("Справочник.Контрагенты"); crmPayerRef.НайтиЭлемент(crmApp.Плательщик);
+            crmPayAgreement=СоздатьОбъект("Справочник.Договоры"); crmPayAgreement.НайтиЭлемент(crmApp.ДоговорПлательщика);
+            crmTOAgreement=СоздатьОбъект("Справочник.Договоры"); crmTOAgreement.НайтиЭлемент(crmApp.ДоговорОператора);
+            crmCustomerName=crmPayerRef.ПолнНаименование;
+            Если ПустаяСтрока(СокрЛП(crmCustomerName))=1 Тогда crmCustomerName=crmPayerRef.Наименование; КонецЕсли;
+            crmMismatch="";
+            Если a_crmName(crmCustomerName)<>a_crmName(crmCustomerNode.ПолучитьАтрибут("NAME")) Тогда crmMismatch=crmMismatch+"ФИО заказчика не совпало; "; КонецЕсли;
+            Если crmPayerRef.ПометкаУдаления()=1 Тогда crmMismatch=crmMismatch+"заказчик помечен на удаление; "; КонецЕсли;
+            Если crmPayAgreement.Владелец<>crmApp.Плательщик Тогда crmMismatch=crmMismatch+"владелец основания плательщика не совпал; "; КонецЕсли;
+            Если crmTOAgreement.Владелец<>crmApp.ТурОператор Тогда crmMismatch=crmMismatch+"владелец основания ТО не совпал; "; КонецЕсли;
+            Если crmPayAgreement.Комиссия<>1 Тогда crmMismatch=crmMismatch+"у основания плательщика Комиссия="+Строка(crmPayAgreement.Комиссия)+", ожидалось 1; "; КонецЕсли;
+            Если (crmPayAgreement.ПометкаУдаления()=1) Или (crmTOAgreement.ПометкаУдаления()=1) Тогда crmMismatch=crmMismatch+"основание помечено на удаление; "; КонецЕсли;
+            Если ПустаяСтрока(crmMismatch)=0 Тогда
+                crmFailed=crmFailed+1; Сообщить("CRM: договор "+crmNode.ПолучитьАтрибут("NUMBER")+": "+crmMismatch); Продолжить;
             КонецЕсли;
             Если (crmApp.ПометкаУдаления()=1) Или (Найти(crmApp.Примечания,"Ключ CRM: "+crmID)=0) Или (crmApp.Статус<>Перечисление.СтатусыЗаявок.Введена) Или (crmApp.Валюта<>Рубль) Или (crmApp.Курс<>1) Или (crmApp.ИтогоСумма<>crmAmount) Или (crmApp.ИтогоСебестоимость<>crmCost) Или (crmApp.КоличествоСтрок()<>1) Тогда
                 crmFailed=crmFailed+1; Сообщить("CRM: не прошла проверка заявки договора "+crmNode.ПолучитьАтрибут("NUMBER")); Продолжить;
