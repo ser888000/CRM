@@ -206,9 +206,9 @@ class TouristAdmin(AuditedAdmin):
     search_fields=['name']
 @admin.register(Operator)
 class OperatorAdmin(AuditedAdmin):
-    list_editable=['is_default']
+    list_editable=['sort_order','is_default']
     search_fields=['name']
-    list_display=['name','booking_url_template','is_default']
+    list_display=['name','booking_url_template','sort_order','is_default']
 
 @admin.register(ContractType,PaymentMethod,Meal,Transfer,Insurance,FuelSurcharge)
 class ReferenceAdmin(AuditedAdmin):
@@ -307,8 +307,8 @@ admin.site.index_title='Управление агентством'
 
 @admin.register(DepartureCity,Country)
 class LocationAdmin(AuditedAdmin):
-    list_editable=['is_default']
-    list_display=['name','code','is_default']
+    list_editable=['sort_order','is_default']
+    list_display=['name','code','sort_order','is_default']
     search_fields=['name','code']
     readonly_fields=['details']
 
@@ -321,8 +321,8 @@ def source_table(obj,key):
 
 @admin.register(Currency)
 class CurrencyAdmin(AuditedAdmin):
-    list_editable=['is_default']
-    list_display=['code','name','is_default']
+    list_editable=['sort_order','is_default']
+    list_display=['code','name','sort_order','is_default']
     search_fields=['code','name']
 
 

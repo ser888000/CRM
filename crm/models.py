@@ -118,6 +118,7 @@ class FuelSurcharge(NamedReference):
         verbose_name='Топливный сбор'; verbose_name_plural='Топливные сборы'
 
 class Operator(DefaultReference):
+    sort_order=models.IntegerField('Порядок сортировки',default=0)
     exchange_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     name = models.CharField('Название',max_length=200,unique=True)
     booking_url_template = models.CharField('Шаблон ссылки на бронь',max_length=1500,blank=True,help_text='Полная ссылка с https:// и {booking} вместо номера. Можно также адрес, заканчивающийся на = или / — номер добавится в конец. Пример: https://agency.pegast.ru/MyAccount/Bookings/?bi={booking}')
@@ -132,7 +133,7 @@ class Operator(DefaultReference):
                 raise ValidationError({'booking_url_template':'Укажите полную ссылку с https:// и {booking} вместо номера, либо адрес, заканчивающийся на = или /.'})
     def booking_link(self,number):
         return booking_url(self.booking_url_template,number)
-    class Meta(DefaultReference.Meta): verbose_name='Туроператор'; verbose_name_plural='Туроператоры'
+    class Meta(DefaultReference.Meta): verbose_name='Туроператор'; verbose_name_plural='Туроператоры'; ordering=['sort_order','name']
     def __str__(self): return self.name
 
 class Tourist(DefaultReference):
@@ -201,7 +202,7 @@ class Contract(models.Model):
     class Meta:
         verbose_name='Договор'; verbose_name_plural='Договоры'
         permissions=[('export_one_c','Выгрузка договоров в 1С')]
-    def __str__(self): return self.number or f'Договор №{self.pk}'
+    def __str__(self): return self.number or (str(self.pk) if self.pk else '')
     def clean(self):
         if self.start and self.end and self.end < self.start: raise ValidationError('Окончание тура раньше начала')
     @property
@@ -362,12 +363,13 @@ def normalize_location(value):
     return ' '.join(unicodedata.normalize('NFKC',value).casefold().replace('ё','е').split())
 
 class LocationReference(DefaultReference):
+    sort_order=models.IntegerField('Порядок сортировки',default=0)
     code=models.CharField('Код из исходного справочника',max_length=40,unique=True)
     name=models.CharField('Название',max_length=100,unique=True)
     details=models.JSONField('Дополнительные данные исходного файла',default=dict,blank=True)
     class Meta(DefaultReference.Meta):
         abstract=True
-        ordering=['name']
+        ordering=['sort_order','name']
     def __str__(self):return self.name
     @classmethod
     def match(cls,value):
@@ -386,12 +388,13 @@ class Country(LocationReference):
         verbose_name_plural='Страны'
 
 class Currency(DefaultReference):
+    sort_order=models.IntegerField('Порядок сортировки',default=0)
     code=models.CharField('Код',max_length=3,unique=True)
     name=models.CharField('Название',max_length=100)
     class Meta(DefaultReference.Meta):
         verbose_name='Валюта'
         verbose_name_plural='Валюты'
-        ordering=['code']
+        ordering=['sort_order','code']
     def __str__(self):return f'{self.code} · {self.name}'
 
 
