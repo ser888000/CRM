@@ -6,9 +6,9 @@ from .models import Contract,normalize_location
 from .templatetags.money import money
 from .customer_matching import phone_key
 
-COLUMNS=[('number','Договор'),('date','Дата'),('customer','Заказчик'),('operator','ТО'),('country','Страна'),('hotel','Отель'),('start','Начало'),('end','Окончание'),('source_currency','Валюта'),('amount','Сумма'),('paid','Оплачено'),('debt','Долг'),('cost','Себестоимость'),('profit','Доход'),('operator_due','Срок оплаты ТО'),('payment_method','Способ оплаты'),('notes','Примечание'),('departure','Город вылета'),('operator_paid','Дата оплаты ТО'),('adults','Взр'),('children','Дети')]
+COLUMNS=[('number','Договор'),('date','Дата'),('customer','Заказчик'),('operator','ТО'),('country','Страна'),('hotel','Отель'),('start','Начало'),('end','Окончание'),('source_currency','Валюта'),('amount','Сумма'),('paid','Оплачено'),('debt','Долг'),('cost','Себестоимость'),('profit','Доход'),('operator_due','Срок оплаты ТО'),('payment_method','Способ оплаты'),('notes','Примечание'),('departure','Город вылета'),('operator_paid_in_full','Оплачено ТО'),('adults','Взр'),('children','Дети')]
 MONEY={'amount','paid','debt','cost','profit'}
-DATES={'date','start','end','operator_due','operator_paid'}
+DATES={'date','start','end','operator_due'}
 
 def journal_context(params,dateform):
     from .journal_period import prepare,has_value_filters,reset_link
@@ -51,7 +51,7 @@ def journal_context(params,dateform):
         cells=[]
         for key,label in COLUMNS:
             value=values[key]
-            text=money(value) if key in MONEY else (value.strftime('%d.%m.%Y') if value and key in DATES else str(value) if value is not None else '')
+            text=('Оплачено' if value else 'Не оплачено') if key=='operator_paid_in_full' else money(value) if key in MONEY else (value.strftime('%d.%m.%Y') if value and key in DATES else str(value) if value is not None else '')
             cells.append({'key':key,'text':text,'filter_value':text or '—'})
         rows.append({'contract':contract,'cells':cells,'values':values})
     columns=[]

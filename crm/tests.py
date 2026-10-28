@@ -29,10 +29,10 @@ class WorkflowTests(TestCase):
         t.refresh_from_db();self.assertEqual(t.due,date(2026,11,8));self.assertEqual(Task.objects.count(),1)
     def test_copy_has_no_money_or_completion(self):
         self.payment('customer',200000)
-        self.c.operator_paid=date(2026,10,21);self.c.save()
+        self.c.operator_paid_in_full=True;self.c.save()
         c=copy_contract(self.c)
         self.assertEqual(c.amount,Decimal('200000'));self.assertEqual(c.paid,0)
-        self.assertIsNone(c.operator_paid);self.assertEqual(c.number,'');self.assertFalse(c.task_set.exists())
+        self.assertFalse(c.operator_paid_in_full);self.assertEqual(c.number,'');self.assertFalse(c.task_set.exists())
     def test_authenticated_pages_and_mass_reschedule_audit(self):
         self.assertEqual(self.client.get('/').status_code,302)
         self.client.force_login(self.user)

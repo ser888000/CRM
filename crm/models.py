@@ -196,7 +196,7 @@ class Contract(models.Model):
     flights = models.TextField('Рейсы туда и обратно',blank=True)
     payment_method = models.ForeignKey(PaymentMethod,on_delete=models.PROTECT,null=True,blank=True,verbose_name='Основной способ оплаты')
     operator_due = models.DateField('Срок оплаты ТО',null=True,blank=True)
-    operator_paid = models.DateField('Дата полной оплаты ТО',null=True,blank=True)
+    operator_paid_in_full = models.BooleanField('Оплачено ТО',default=False)
     metrika_id = models.CharField('ID клиента Метрики',max_length=100,blank=True)
     notes = models.TextField('Примечание',blank=True)
     class Meta:

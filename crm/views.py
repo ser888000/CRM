@@ -60,3 +60,23 @@ def reschedule(request):
         task.due=due;task.save(update_fields=['due'])
         AuditEvent.objects.create(actor=request.user,object_type='crm.Task',object_id=str(task.pk),action='rescheduled',changes={'due':{'old':str(old),'new':str(due)}})
     return redirect('tasks')
+
+@login_required
+@permission_required(('crm.view_contract','crm.change_contract'),raise_exception=True)
+@require_POST
+@never_cache
+@transaction.atomic
+def operator_paid_status(request,pk):
+    from django.http import JsonResponse
+    from django.shortcuts import get_object_or_404
+    if request.POST.get('paid') not in ('0','1'):
+        return JsonResponse({'error':'Некорректное значение статуса.'},status=400)
+    contract=get_object_or_404(Contract.objects.select_for_update(),pk=pk)
+    if request.POST.get('version')!=str(contract.updated_at):
+        return JsonResponse({'error':'Договор изменился в другом окне. Обновите страницу.'},status=409)
+    value=request.POST['paid']=='1'
+    if value!=contract.operator_paid_in_full:
+        old=contract.operator_paid_in_full;contract.operator_paid_in_full=value
+        contract.save(update_fields=['operator_paid_in_full','updated_at'])
+        AuditEvent.objects.create(actor=request.user,object_type='crm.Contract',object_id=str(pk),action='operator_payment_status',changes={'operator_paid_in_full':{'old':old,'new':value}})
+    return JsonResponse({'paid':contract.operator_paid_in_full,'version':str(contract.updated_at)})

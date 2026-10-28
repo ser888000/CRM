@@ -38,7 +38,7 @@ class HistoryTests(TestCase):
         self.assertEqual(contract.legacy_customer_snapshot['person']['FIO_REQUIS_FIZ'],'Историческое имя')
         self.assertEqual(m.Tourist.objects.count(),1);self.assertEqual(m.Booking.objects.count(),0)
         self.assertEqual(m.Payment.objects.filter(kind='operator').count(),1)
-        self.assertIsNone(contract.operator_paid)
+        self.assertFalse(contract.operator_paid_in_full)
         self.assertEqual(m.Payment.objects.get(kind='operator').date,contract.date)
         self.assertEqual(contract.opening_operator_paid,0)
         self.assertEqual(m.Payment.objects.get(kind='customer_refund').amount,50)

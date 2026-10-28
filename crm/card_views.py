@@ -8,11 +8,12 @@ from django.http import Http404
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters,sensitive_variables
 from django.forms.models import model_to_dict
+from django import forms
 from .models import Contract,Payment,Booking,ContractLine,Task,Tourist,AuditEvent,LegacyRecord
 from .card_forms import CardContractForm,CustomerCardForm,TouristCardForm,CardPaymentForm,BookingCardForm,LineCardForm,TaskCardForm
 from .services import create_tasks,create_contract_tasks,copy_contract
 
-GROUPS=[('Основное',['number','date','contract_type','customer','operator','notes']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['flights','transfer','insurance','fuel_surcharge','services']),('Оплата и примечания',['payment_method','operator_due','operator_paid','metrika_id'])]
+GROUPS=[('Основное',['number','date','contract_type','customer','operator','payment_method','notes']),('Тур',['country','region','departure','start','end','nights','tour_name','hotel','room','meal','adults','children','infants','source_currency']),('Услуги и перелёты',['flights','transfer','insurance','fuel_surcharge','services']),('Дополнительно',['metrika_id'])]
 
 def require(user,*perms):
     if not user.has_perms(perms):raise PermissionDenied
@@ -38,6 +39,8 @@ def contract_card(request,pk=None):
     line_form=LineCardForm(prefix='line-new')
     task_form=TaskCardForm(prefix='task-new')
     tourist_form=TouristCardForm(prefix='tourist-new')
+    deadline=forms.Form(request.POST if action=='operator_due' else None,initial={'due':contract.operator_due})
+    deadline.fields['due']=forms.DateField(label='Срок оплаты ТО (общий для всех броней)',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     active=request.GET.get('tab','overview')
     invalid_form=None;invalid_id=None;invalid_action=None
     if action=='contract':
@@ -56,7 +59,17 @@ def contract_card(request,pk=None):
                 return redirect('contract_card',pk=saved.pk)
     elif action:
         if not pk:raise PermissionDenied
-        if action=='copy':
+        if action=='operator_due':
+            require(request.user,'crm.change_contract')
+            active='bookings'
+            if deadline.is_valid():
+                if request.POST.get('version')!=str(contract.updated_at):
+                    deadline.add_error(None,'Договор изменился. Обновите страницу перед сохранением.')
+                else:
+                    before=model_to_dict(contract);contract.operator_due=deadline.cleaned_data['due']
+                    contract.save(update_fields=['operator_due','updated_at']);audit(request.user,contract,before,'operator_due_updated')
+                    return redirect('/contracts/'+str(pk)+'/?tab=bookings')
+        elif action=='copy':
             require(request.user,'crm.add_contract','crm.add_contractline')
             cloned=copy_contract(contract);audit(request.user,cloned,{},'copied')
             messages.success(request,'Создана копия без оплат, броней, задач и связи с Турвизором. Проверьте даты и номер.')
@@ -166,6 +179,6 @@ def contract_card(request,pk=None):
         labels={'FIO_REQUIS_FIZ':'ФИО','FULL_NAME':'Организация','PASPORT_NUMBER':'Паспорт','PASPORT_VIDAN_DATA':'Дата выдачи','PASPORT_VIDAN_KEM':'Кем выдан','KOD_PODRAZDELEN_FIZ':'Код подразделения','ADDRES_PROPIS':'Адрес регистрации','ADRES_YUR':'Юридический адрес','INN':'ИНН','KPP':'КПП','RS':'Расчётный счёт','BANK_NAME':'Банк','KONT_TEL':'Телефон','EMAIL_FIZ':'Email'}
         for values in contract.legacy_customer_snapshot.values():
             snapshot_fields.extend((label,str(values[key])) for key,label in labels.items() if values.get(key))
-    return render(request,'crm/contract_card.html',{'legacy_operator_original':legacy_record.payload.get('ADD_SUM_OPLATY_TO',0) if legacy_record else 0,'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
+    return render(request,'crm/contract_card.html',{'legacy_operator_original':legacy_record.payload.get('ADD_SUM_OPLATY_TO',0) if legacy_record else 0,'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'operator_due_form':deadline,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
         'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'contract_task_rows':[{'kind':kind,'selected':str(kind.pk) in {str(v) for v in (form['task_templates'].value() or [])},'date':form[f'task_due_{kind.pk}']} for kind in form.fields['task_templates'].queryset], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
         'payment_groups':[('Заказчик',[p for p in payments if p.kind in ('customer','customer_refund')]),('Туроператор',[p for p in payments if p.kind in ('operator','operator_refund')])],'payments':payments,'task_count':task_count,'has_more_tasks':task_count>len(tasks),'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})

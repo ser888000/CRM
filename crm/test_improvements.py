@@ -23,13 +23,13 @@ class JournalImprovementTests(TestCase):
         self.operator=Operator.objects.create(name='ТО')
         self.cards=[]
         for i,country in enumerate(['Египет','Турция','Египет']):
-            c=Contract.objects.create(customer=self.customer,operator=self.operator,number=str(i+1),country=country,date=date(2026,10,24),adults=2,children=i,departure='Москва',notes='Пример',operator_paid=date(2026,10,24))
+            c=Contract.objects.create(customer=self.customer,operator=self.operator,number=str(i+1),country=country,date=date(2026,10,24),adults=2,children=i,departure='Москва',notes='Пример',operator_paid_in_full=True)
             ContractLine.objects.create(contract=c,description='Тур',amount=[300,100,200][i]);self.cards.append(c)
     def test_unicode_contact_search_and_layout(self):
         for data in [{'customer':'пЕтРоВ'},{'email':'test@EXAMPLE'},{'phone':'89991112233'}]:
             with self.subTest(data=data):self.assertEqual(self.client.get('/',{**data,'start':'2026-10-24','end':'2026-10-24'}).context['count'],3)
         r=self.client.get('/',follow=True)
-        for label in ['Способ оплаты','Примечание','Город вылета','Дата оплаты ТО','Взр','Дети','Месяц']:self.assertContains(r,label)
+        for label in ['Способ оплаты','Примечание','Город вылета','Оплачено ТО','Взр','Дети','Месяц']:self.assertContains(r,label)
         for name in ['number','operator','country']:self.assertNotContains(r,f'name="{name}"')
         self.assertNotContains(r,'документов · Сумма')
     def test_multi_column_filters_sort_and_totals(self):

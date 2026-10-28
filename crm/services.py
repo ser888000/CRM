@@ -55,7 +55,7 @@ def copy_contract(source):
     copy.imported_at = None
     copy.source_data = {}
     copy.date = timezone.localdate()
-    copy.operator_paid = None
+    copy.operator_paid_in_full = False
     copy.opening_operator_paid = 0
     copy.save()
     for line in source.lines.all():

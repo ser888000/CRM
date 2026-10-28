@@ -20,3 +20,5 @@
 .section-card form>button{margin-right:10px;margin-bottom:8px}.line-card .line-top{font-weight:400}#finance-editor .field-grid{grid-template-columns:repeat(3,minmax(0,1fr))}#finance-editor .field-kind{grid-column:auto}.task-field-groups{display:grid;gap:20px;margin:16px 0 24px}.task-field-groups>.field-grid{margin:0}.task-field-groups .field-kind{grid-column:auto}@media(max-width:760px){#finance-editor .field-grid{grid-template-columns:1fr}}
 
 .task-contact-readonly input{height:30px;font-size:12px}.task-contact-readonly label{margin-bottom:3px}.task-contact-readonly label:not(:first-child){margin-top:6px}
+
+.field-notes{grid-column:1 / -1}

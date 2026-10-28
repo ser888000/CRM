@@ -7,6 +7,8 @@ from .widgets import MoneyInput
 from .reference_defaults import apply_reference_defaults
 
 class CardContractForm(ContractForm):
+    class Meta(ContractForm.Meta):
+        exclude=['operator_due','operator_paid_in_full']
     version=forms.CharField(widget=forms.HiddenInput,required=False)
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)

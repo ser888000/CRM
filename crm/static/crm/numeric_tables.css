@@ -4,3 +4,5 @@ table td.numeric,table th.numeric,table td[data-col="amount"],table td[data-col=
 table .field-id,table .field-source_id,table .field-target_id,table .field-sort_order,table input[type="number"],table input[inputmode="decimal"]{text-align:right;font-variant-numeric:tabular-nums}
 
 .journal-scroll{max-height:72vh;overflow:auto;position:relative;isolation:isolate}.journal-scroll table{border-collapse:separate;border-spacing:0}.journal-scroll thead th{position:sticky;top:0;z-index:5;background:#fafbf8}
+
+.operator-paid-status{display:inline-block;white-space:nowrap;background:#f1e7df;color:#875632;border:1px solid #dfcbb9;border-radius:6px;padding:8px 10px;font-size:12px}.operator-paid-status.is-paid{background:#def0e4;color:#296344;border-color:#b8d8c3}.operator-paid-status[disabled]{opacity:.6}
