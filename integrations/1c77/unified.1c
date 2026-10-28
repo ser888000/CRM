@@ -375,7 +375,14 @@
             Если a_crmName(crmCustomerName)<>a_crmName(crmCustomerNode.ПолучитьАтрибут("NAME")) Тогда crmMismatch=crmMismatch+"ФИО заказчика не совпало; "; КонецЕсли;
             Если crmPayerRef.ПометкаУдаления()=1 Тогда crmMismatch=crmMismatch+"заказчик помечен на удаление; "; КонецЕсли;
             Если crmPayAgreement.Владелец<>crmApp.Плательщик Тогда crmMismatch=crmMismatch+"владелец основания плательщика не совпал; "; КонецЕсли;
-            Если crmTOAgreement.Владелец<>crmApp.ТурОператор Тогда crmMismatch=crmMismatch+"владелец основания ТО не совпал; "; КонецЕсли;
+            crmRepairTO=0;
+            Если crmTOAgreement.Владелец<>crmApp.ТурОператор Тогда
+                Если (crmApp.ДоговорОператора=crmApp.ДоговорПлательщика) И (crmTOAgreement.Владелец=crmApp.Плательщик) И ((СокрЛП(crmTOAgreement.Наименование)=a_crmAgreementTitle(crmApp)) Или (СокрЛП(crmTOAgreement.Наименование)="CRM "+crmID)) Тогда
+                    crmRepairTO=1;
+                Иначе
+                    crmMismatch=crmMismatch+"владелец основания ТО не совпал; ";
+                КонецЕсли;
+            КонецЕсли;
             Если crmPayAgreement.Комиссия<>1 Тогда crmMismatch=crmMismatch+"у основания плательщика Комиссия="+Строка(crmPayAgreement.Комиссия)+", ожидалось 1; "; КонецЕсли;
             Если (crmPayAgreement.ПометкаУдаления()=1) Или (crmTOAgreement.ПометкаУдаления()=1) Тогда crmMismatch=crmMismatch+"основание помечено на удаление; "; КонецЕсли;
             Если ПустаяСтрока(crmMismatch)=0 Тогда
@@ -387,6 +394,12 @@
             crmApp.ВыбратьСтроки(); crmApp.ПолучитьСтроку();
             Если (crmApp.Сумма<>crmAmount) Или (crmApp.Себестоимость<>crmCost) Тогда crmFailed=crmFailed+1; Сообщить("CRM: строки заявки отличаются от пакета"); Продолжить; КонецЕсли;
             НачатьТранзакцию(); crmTransaction=1;
+            Если crmRepairTO=1 Тогда
+                crmCorrectAgreement=a_crmAgreement(crmApp.ТурОператор,crmID,a_crmAgreementTitle(crmApp));
+                Если crmError(crmCorrectAgreement)=1 Тогда ОтменитьТранзакцию(); crmTransaction=0; crmFailed=crmFailed+1; Продолжить; КонецЕсли;
+                crmApp.ДоговорОператора=crmCorrectAgreement;
+                Сообщить("CRM: договор "+crmNode.ПолучитьАтрибут("NUMBER")+": исправлено основание ТО, основание заказчика сохранено.");
+            КонецЕсли;
             Если crmEnsureApplicationServices(crmRef)=0 Тогда
                 ОтменитьТранзакцию(); crmTransaction=0; crmFailed=crmFailed+1; Продолжить;
             КонецЕсли;

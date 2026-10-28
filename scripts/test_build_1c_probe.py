@@ -39,6 +39,19 @@ class UnifiedCompositionTests(unittest.TestCase):
                                          f'{definition[1]} calls {call[1]} before declaration')
         self.assertLess(positions['crmBatchApplications'], positions['crmUnified'])
 
+    def test_agreement_search_checks_owner_and_repair_is_narrow(self):
+        directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
+        source = unified_source(directory)
+        lookup = source.split('Функция a_crmFindOwnedAgreement(', 1)[1].split('КонецФункции', 1)[0]
+        self.assertIn('crmRef.Владелец=crmOwner', lookup)
+        self.assertNotIn('НайтиПоНаименованию', lookup)
+        repair = source.split('Процедура crmPreparePaymentApplications(', 1)[1].split('КонецПроцедуры', 1)[0]
+        self.assertIn('crmApp.ДоговорОператора=crmApp.ДоговорПлательщика', repair)
+        self.assertIn('crmTOAgreement.Владелец=crmApp.Плательщик', repair)
+        self.assertLess(repair.index('Найти(crmApp.Примечания,"Ключ CRM: "+crmID)'),
+                        repair.index('crmApp.ДоговорОператора=crmCorrectAgreement'))
+        self.assertIn('crmApp.ДоговорОператора=crmCorrectAgreement', repair)
+
     def test_batch_posting_reads_settlement_catalogs_and_identifies_mismatch(self):
         directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
         source = unified_source(directory)

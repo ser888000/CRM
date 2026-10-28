@@ -210,25 +210,32 @@
     Возврат 1;
 КонецФункции
 
+Функция crmFindOwnedAgreement(crmOwner,crmTitle)
+    crmRef=СоздатьОбъект("Справочник.Договоры"); crmRef.ИспользоватьВладельца(crmOwner); crmRef.ВыбратьЭлементы();
+    crmFound=""; crmCount=0;
+    Пока crmRef.ПолучитьЭлемент()=1 Цикл
+        Если (crmRef.ЭтоГруппа()=0) И (crmRef.ПометкаУдаления()=0) И (crmRef.Владелец=crmOwner) И (СокрЛП(crmRef.Наименование)=crmTitle) Тогда
+            crmCount=crmCount+1; crmFound=crmRef.ТекущийЭлемент();
+        КонецЕсли;
+    КонецЦикла;
+    Если crmCount>1 Тогда Предупреждение("У контрагента несколько оснований с названием "+crmTitle); Возврат -1; КонецЕсли;
+    Возврат crmFound;
+КонецФункции
+
 Функция crmAgreement(crmOwner,crmID,crmTitle)
+    crmFound=crmFindOwnedAgreement(crmOwner,"CRM "+crmID);
+    Если crmError(crmFound)=1 Тогда Возврат -1; КонецЕсли;
+    Если ПустоеЗначение(crmFound)=1 Тогда crmFound=crmFindOwnedAgreement(crmOwner,crmTitle); КонецЕсли;
+    Если crmError(crmFound)=1 Тогда Возврат -1; КонецЕсли;
     crmRef=СоздатьОбъект("Справочник.Договоры"); crmRef.ИспользоватьВладельца(crmOwner);
-    crmLegacyTitle="CRM "+crmID;
-    Если crmRef.НайтиПоНаименованию(crmLegacyTitle,0)=1 Тогда
-        crmAgreementRef=crmRef.ТекущийЭлемент();
-        Если crmCheckAgreementTitle(crmAgreementRef,crmOwner,crmLegacyTitle,crmTitle)<>1 Тогда Возврат -1; КонецЕсли;
-        crmRef.Наименование=crmTitle; crmRef.Записать();
-        Возврат crmRef.ТекущийЭлемент();
+    Если ПустоеЗначение(crmFound)=0 Тогда
+        crmRef.НайтиЭлемент(crmFound);
+        Если СокрЛП(crmRef.Наименование)="CRM "+crmID Тогда crmRef.Наименование=crmTitle; crmRef.Записать(); КонецЕсли;
+        Возврат crmFound;
     КонецЕсли;
-    Если crmRef.НайтиПоНаименованию(crmTitle,0)=1 Тогда
-        Если crmRef.ПометкаУдаления()=1 Тогда Предупреждение("Договор расчётов помечен на удаление."); Возврат -1; КонецЕсли;
-        Возврат crmRef.ТекущийЭлемент();
-    КонецЕсли;
-    Если СтрДлина(crmTitle)>Метаданные.Справочник("Договоры").ДлинаНаименования Тогда
-        Предупреждение("Название договора расчётов длиннее допустимого."); Возврат -1;
-    КонецЕсли;
-    crmRef.Новый(); crmRef.Наименование=crmTitle;
-    crmRef.Комиссия=1; crmRef.ОплатаДоговора=1;
-    crmRef.Записать();
+    Если СтрДлина(crmTitle)>Метаданные.Справочник("Договоры").ДлинаНаименования Тогда Предупреждение("Название основания слишком длинное."); Возврат -1; КонецЕсли;
+    crmRef.Новый(); crmRef.Наименование=crmTitle; crmRef.Комиссия=1; crmRef.ОплатаДоговора=1; crmRef.Записать();
+    Если crmRef.Владелец<>crmOwner Тогда Предупреждение("Не совпал владелец нового основания."); Возврат -1; КонецЕсли;
     Возврат crmRef.ТекущийЭлемент();
 КонецФункции
 
