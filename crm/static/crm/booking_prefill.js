@@ -8,7 +8,7 @@
  const endpoint=new URL('/booking-prefill/status/',script.src);
  if(endpoint.origin!=='https://crm.aborigen-tour.ru')return;
  window.__aborigenBookingPrefill=true;
- let saved=null,panel,button,status,reset,startDate,sourceLabel;
+ let saved=null,panel,button,status,reset,startDate,sourceLabel,dateLabel;
  async function authorize(){
   const response=await fetch(endpoint,{credentials:'include',cache:'no-store',redirect:'error'});
   if(!response.ok)return null;
@@ -97,7 +97,7 @@
  function updateTourDate(){
   if(!startDate)return;
   const date=readTourDate();
-  if(date){startDate.value=date;startDate.readOnly=true;startDate.title='Дата выбранного тура из Турвизора';}
+  if(date){dateLabel.hidden=true;startDate.value=date;startDate.readOnly=true;startDate.title='Дата выбранного тура из Турвизора';}
   else{if(startDate.readOnly)startDate.value='';startDate.readOnly=false;startDate.title='Если дата тура не распознана, укажите её вручную';}
  }
  function normalizeCountry(value){
@@ -153,7 +153,7 @@
    const auth=await authorize();if(!auth){panel.remove();return;}
    sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Сначала нажмите «Данные в Турвизор» в нужном договоре CRM.';
    updateTourDate();
-   if(!startDate.value)throw Error('Укажите дату начала новой поездки для правильного возраста туристов.');
+   if(!startDate.value){dateLabel.hidden=false;throw Error('Не удалось прочитать дату тура. Укажите начало поездки вручную.');}
    const dataUrl=new URL('/booking-prefill/data/',endpoint);dataUrl.searchParams.set('start',startDate.value);
    const response=await fetch(dataUrl,{credentials:'include',cache:'no-store',redirect:'error'});
    const data=await response.json();
@@ -209,8 +209,19 @@
   reset=document.createElement('button');reset.type='button';reset.textContent='Убрать подставленные данные';reset.hidden=true;
   reset.onclick=restore;
   sourceLabel=document.createElement('p');sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Нажмите «Данные в Турвизор» в исходном договоре CRM.';
-  const dateLabel=document.createElement('label');dateLabel.textContent='Начало новой поездки';dateLabel.style.display='block';startDate=document.createElement('input');startDate.type='date';dateLabel.append(startDate);
-  panel.append(title,sourceLabel,dateLabel,document.createElement('br'),button,status,reset);document.body.append(panel);updateTourDate();
+  dateLabel=document.createElement('label');dateLabel.textContent='Начало новой поездки';dateLabel.hidden=true;startDate=document.createElement('input');startDate.type='date';dateLabel.append(startDate);
+  const close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','Свернуть помощник CRM');
+  Object.assign(close.style,{float:'right',marginLeft:'12px',cursor:'pointer'});
+  const launcher=document.createElement('button');launcher.type='button';launcher.textContent='CRM';launcher.setAttribute('aria-label','Открыть помощник CRM');
+  Object.assign(launcher.style,{position:'fixed',left:'16px',bottom:'16px',zIndex:'2147483000',padding:'8px 12px',border:'1px solid #183f35',borderRadius:'8px',background:'#fffbe9',color:'#183f35',cursor:'pointer'});
+  function collapse(value){
+   panel.hidden=value;launcher.hidden=!value;
+   try{sessionStorage.setItem('aborigen-crm-prefill-collapsed',value?'1':'0')}catch{}
+  }
+  close.onclick=()=>collapse(true);launcher.onclick=()=>collapse(false);
+  panel.append(title,sourceLabel,dateLabel,document.createElement('br'),button,status,reset,close);document.body.append(panel,launcher);
+  let collapsed=false;try{collapsed=sessionStorage.getItem('aborigen-crm-prefill-collapsed')==='1'}catch{}
+  collapse(collapsed);updateTourDate();
   const observer=new MutationObserver(()=>updateTourDate());
   observer.observe(document.querySelector('.tv-moduleid-898').parentElement,{childList:true,subtree:true,characterData:true});
  }

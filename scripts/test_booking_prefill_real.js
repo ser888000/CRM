@@ -94,7 +94,7 @@ test('clear carried data after another tour renders, preserving manual edits and
  assert.equal(page.d.querySelector('.TVPassportAuthority input').value,'MANUAL EDIT');
  assert.equal(page.d.querySelector('.TVCustomerContactsName input').value,'');
  assert.equal(page.d.querySelector('#unrelated').value,'UNCHANGED');
- assert.equal(page.buttons.length,2);
+ assert.equal(page.buttons.length,3);
 });
 test('tour card supplies date automatically, including explicit year and current-year omission',async()=>{
  const page=await setup();
@@ -104,4 +104,20 @@ test('tour card supplies date automatically, including explicit year and current
  card.querySelector('span').textContent='5 ноября';await new Promise(resolve=>setImmediate(resolve));
  assert.equal(date.value,`${new Date().getFullYear()}-11-05`);
  card.querySelector('span').textContent='31 февраля 2027';await new Promise(resolve=>setImmediate(resolve));assert.equal(date.readOnly,false);
+});
+
+
+test('date stays out of view and helper can collapse and reopen',async()=>{
+ const page=await setup();
+ assert.equal(page.panel.querySelector('label').hidden,true);
+ page.buttons[2].onclick();assert.equal(page.panel.hidden,true);
+ assert.equal(page.w.sessionStorage.getItem('aborigen-crm-prefill-collapsed'),'1');
+ const launcher=page.d.querySelector('button[aria-label="Открыть помощник CRM"]');
+ assert.equal(launcher.hidden,false);launcher.onclick();
+ assert.equal(page.panel.hidden,false);assert.equal(launcher.hidden,true);
+});
+test('manual date appears only when automatic date and manual value are missing',async()=>{
+ const page=await setup();page.panel.querySelector('input[type=date]').value='';
+ await page.buttons[0].onclick();assert.equal(page.panel.querySelector('label').hidden,false);
+ assert.equal(page.model.size,0);
 });
