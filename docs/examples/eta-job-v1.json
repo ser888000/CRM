@@ -1,0 +1,157 @@
+{
+  "schema": "aborigen.sri-lanka-eta.job.v1",
+  "batch_id": "11111111-1111-4111-8111-111111111111",
+  "contract_id": 9001,
+  "contract_exchange_id": "44444444-4444-4444-8444-444444444444",
+  "created_at": "2027-01-18T12:05:00+03:00",
+  "handoff_token": "FICTIONAL-EXAMPLE-NOT-A-VALID-TOKEN",
+  "official_portal": "https://www.eta.gov.lk/slvisa/",
+  "date_format": "YYYY-MM-DD",
+  "portal_date_format": "MM-DD-YYYY",
+  "submission_authorized": false,
+  "requirements": {
+    "human_confirmation_required": true,
+    "stop_on_captcha": true,
+    "stop_on_unconfirmed_fields": true,
+    "check_current_child_rules": true,
+    "find_hotel_address_if_missing": true,
+    "structure_home_address_from_payer": true,
+    "check_actual_fee": true,
+    "never_retry_uncertain_submission": true
+  },
+  "applicants": [
+    {
+      "application_id": "22222222-2222-4222-8222-222222222222",
+      "tourist_id": 9101,
+      "source_sha256": "d909fe2ef70b9c87ff9375adb9c4dd0389bdeeac41ff1da75d3380d3d6481fa9",
+      "data_sha256": "c4a859f759e4d655a90679c181b91f79079802d662fc729eb286fc820c36a327",
+      "data": {
+        "person": {
+          "surname": "EXAMPLE",
+          "given_names": "TEST",
+          "gender": "male",
+          "birth_date": "1987-01-15",
+          "nationality": "Test Country",
+          "birth_country": "Test Country",
+          "age_on_arrival": 40,
+          "occupation": "MANAGER"
+        },
+        "passport": {
+          "own": true,
+          "number": "TEST000001",
+          "issued_on": "2020-01-01",
+          "expires_on": "2040-01-01"
+        },
+        "home": {
+          "address": "1 Example Street, Test City, Test Region, Test Country",
+          "city": "Test City",
+          "region": "Test Region",
+          "country": "Test Country"
+        },
+        "contact": {
+          "email": "spo-ab@ya.ru",
+          "email_confirmation": "spo-ab@ya.ru",
+          "phone": "+70000000000"
+        },
+        "travel": {
+          "arrival_date": "2027-01-20",
+          "departure_date": "2027-01-27",
+          "departure_airport": "SVO",
+          "arrival_airport": "CMB",
+          "airline": "EXAMPLE AIRLINE",
+          "flight_number": "TE100"
+        },
+        "accommodation": {
+          "name": "EXAMPLE HOTEL",
+          "full_address": ""
+        },
+        "confirmed_answers": {
+          "declarations": [
+            {
+              "question": "Covid Vaccination Status",
+              "answer": "Yes",
+              "confirmed": true
+            }
+          ],
+          "previous_visas": "No previous visas — fictional confirmed example only",
+          "travel_last_14_days": "Россия",
+          "confirmed_by": 999,
+          "confirmed_at": "2027-01-18T12:00:00+03:00"
+        },
+        "child": null
+      },
+      "expected_fee": null,
+      "expected_fee_currency": ""
+    },
+    {
+      "application_id": "33333333-3333-4333-8333-333333333333",
+      "tourist_id": 9102,
+      "source_sha256": "c06662686b99e8fa215b755ccf860de0e3d6bebd4cef62daa6534e4a7e7f043c",
+      "data_sha256": "fa85f50afa5609bef36256f49d214147d08386e7070ec2b21ee87262f679b6bd",
+      "data": {
+        "person": {
+          "surname": "EXAMPLE",
+          "given_names": "CHILD",
+          "gender": "male",
+          "birth_date": "2017-01-01",
+          "nationality": "Test Country",
+          "birth_country": "Test Country",
+          "age_on_arrival": 10,
+          "occupation": ""
+        },
+        "passport": {
+          "own": true,
+          "number": "TEST000002",
+          "issued_on": "2020-01-01",
+          "expires_on": "2040-01-01"
+        },
+        "home": {
+          "address": "1 Example Street, Test City, Test Region, Test Country",
+          "city": "Test City",
+          "region": "Test Region",
+          "country": "Test Country"
+        },
+        "contact": {
+          "email": "spo-ab@ya.ru",
+          "email_confirmation": "spo-ab@ya.ru",
+          "phone": "+70000000000"
+        },
+        "travel": {
+          "arrival_date": "2027-01-20",
+          "departure_date": "2027-01-27",
+          "departure_airport": "SVO",
+          "arrival_airport": "CMB",
+          "airline": "EXAMPLE AIRLINE",
+          "flight_number": "TE100"
+        },
+        "accommodation": {
+          "name": "EXAMPLE HOTEL",
+          "full_address": ""
+        },
+        "confirmed_answers": {
+          "declarations": [
+            {
+              "question": "Covid Vaccination Status",
+              "answer": "Yes",
+              "confirmed": true
+            }
+          ],
+          "previous_visas": "No previous visas — fictional confirmed example only",
+          "travel_last_14_days": "Россия",
+          "confirmed_by": 999,
+          "confirmed_at": "2027-01-18T12:00:00+03:00"
+        },
+        "child": {
+          "own_passport": true,
+          "application_mode": "separate",
+          "parent_tourist_id": 9101,
+          "parent_application_id": "22222222-2222-4222-8222-222222222222",
+          "relationship": "Parent and child — fictional example",
+          "guardian_details": ""
+        }
+      },
+      "expected_fee": null,
+      "expected_fee_currency": ""
+    }
+  ]
+}

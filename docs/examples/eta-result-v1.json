@@ -1,0 +1,77 @@
+{
+  "schema": "aborigen.sri-lanka-eta.result.v1",
+  "batch_id": "11111111-1111-4111-8111-111111111111",
+  "contract_id": 9001,
+  "contract_exchange_id": "44444444-4444-4444-8444-444444444444",
+  "handoff_token": "FICTIONAL-EXAMPLE-NOT-A-VALID-TOKEN",
+  "results": [
+    {
+      "application_id": "22222222-2222-4222-8222-222222222222",
+      "tourist_id": 9101,
+      "data_sha256": "c4a859f759e4d655a90679c181b91f79079802d662fc729eb286fc820c36a327",
+      "stage": "awaiting_confirmation",
+      "updated_at": "2027-01-18T12:10:00+03:00",
+      "application_number": "",
+      "portal_status": "Draft — fictional example",
+      "fee": {
+        "amount": "50.00",
+        "currency": "USD"
+      },
+      "stop_reason": "",
+      "portal_summary": {
+        "person": {
+          "surname": "EXAMPLE",
+          "given_names": "TEST",
+          "gender": "male",
+          "birth_date": "1987-01-15",
+          "nationality": "Test Country",
+          "birth_country": "Test Country",
+          "age_on_arrival": 40,
+          "occupation": "MANAGER"
+        },
+        "passport": {
+          "own": true,
+          "number": "TEST000001",
+          "issued_on": "2020-01-01",
+          "expires_on": "2040-01-01"
+        },
+        "home": {
+          "address": "1 Example Street, Test City, Test Region, Test Country",
+          "city": "Test City",
+          "region": "Test Region",
+          "country": "Test Country"
+        },
+        "travel": {
+          "arrival_date": "2027-01-20",
+          "departure_date": "2027-01-27",
+          "departure_airport": "SVO",
+          "arrival_airport": "CMB",
+          "airline": "EXAMPLE AIRLINE",
+          "flight_number": "TE100"
+        },
+        "accommodation": {
+          "name": "EXAMPLE HOTEL",
+          "full_address": "1 Fictional Hotel Road, Colombo, Sri Lanka"
+        },
+        "contact": {
+          "email": "spo-ab@ya.ru",
+          "email_confirmation": "spo-ab@ya.ru",
+          "phone": "+70000000000"
+        },
+        "child": null,
+        "additional_fields": {
+          "Covid Vaccination Status": "Yes"
+        }
+      },
+      "hotel_address_source": "https://hotel.example.invalid/address",
+      "unconfirmed_fields": [],
+      "captcha_required": false,
+      "portal_rules_changed": false,
+      "submission_uncertain": false,
+      "portal_conditions": {
+        "text": "FICTIONAL TERMS FOR FORMAT DEMONSTRATION ONLY. The real executor must return current official portal conditions.",
+        "sha256": "6e8d2c570bd69899e256b95e36d40078c7c5a15e3d233b7b54d582d78698eb69"
+      }
+    }
+  ]
+}

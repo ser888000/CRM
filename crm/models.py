@@ -491,3 +491,42 @@ class LegacyRecord(models.Model):
         verbose_name='Исходная запись старой CRM'
         verbose_name_plural='Исходные записи старой CRM'
         constraints=[models.UniqueConstraint(fields=['source_key','table','source_id'],name='unique_legacy_source_record')]
+
+class ETAExport(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='eta_exports')
+    created_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    payload=models.JSONField(default=dict)
+    receipt_hashes=models.JSONField(default=list)
+    class Meta:verbose_name='Пакет ETA';verbose_name_plural='Пакеты ETA'
+
+
+class ETAApplication(models.Model):
+    STATES=[('needs_data','Нужны данные'),('ready','Готово к заполнению'),('filling','Заполняется'),
+            ('awaiting_confirmation','Ожидает подтверждения'),('submitted','Подано'),('under_review','На рассмотрении'),
+            ('approved','Одобрено'),('referral','Требует обращения в иммиграционную службу'),('error','Ошибка')]
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    contract=models.ForeignKey(Contract,on_delete=models.PROTECT,related_name='eta_applications')
+    tourist=models.ForeignKey(Tourist,on_delete=models.PROTECT,related_name='eta_applications')
+    status=models.CharField(max_length=32,choices=STATES,default='needs_data')
+    preparation=models.JSONField(default=dict)
+    source_hash=models.CharField(max_length=64,blank=True)
+    active_identity_key=models.CharField(max_length=64,null=True,blank=True,unique=True,editable=False)
+    active_export=models.ForeignKey(ETAExport,on_delete=models.PROTECT,null=True,blank=True)
+    result=models.JSONField(default=dict)
+    application_number=models.CharField(max_length=100,blank=True)
+    portal_status=models.CharField(max_length=250,blank=True)
+    actual_fee=models.DecimalField(max_digits=12,decimal_places=2,null=True,blank=True)
+    fee_currency=models.CharField(max_length=3,blank=True)
+    stop_reason=models.TextField(blank=True)
+    portal_updated_at=models.DateTimeField(null=True,blank=True)
+    authorization=models.JSONField(default=dict,blank=True)
+    submission_authorized_at=models.DateTimeField(null=True,blank=True)
+    submission_authorized_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True)
+    approval_notice=models.BinaryField(null=True,blank=True)
+    approval_sha256=models.CharField(max_length=64,blank=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        verbose_name='Задание ETA';verbose_name_plural='Задания ETA'
+        constraints=[models.UniqueConstraint(fields=['contract','tourist'],name='unique_eta_contract_tourist')]

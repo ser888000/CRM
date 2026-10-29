@@ -24,3 +24,5 @@
 .field-notes{grid-column:1 / -1}
 
 .operator-settlement-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.operator-settlement-row form{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.operator-settlement-row form p{margin:0}.operator-settlement-row input[type=date]{width:auto}
+
+.card-heading>div:last-child{flex-wrap:wrap;justify-content:flex-end}
