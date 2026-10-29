@@ -22,6 +22,16 @@ class ParserTests(SimpleTestCase):
         self.assertEqual(fields['passport_issued_by'], 'ГУ МВД РОССИИ ПО ТЕСТОВОЙ ОБЛАСТИ')
         self.assertEqual(fields['passport_code'], '000-001')
 
+    def test_name_before_birthday_without_birth_marker(self):
+        text = 'Тестов Иван Иванович ' + NOTE.replace(' г.р.', '').replace(', выдан', ' выдан')
+        fields, reason = extract(text)
+        self.assertFalse(reason)
+        self.assertEqual(fields, extract(NOTE)[0])
+        self.assertNotIn('name', fields)
+
+    def test_birthday_without_marker_or_name(self):
+        self.assertEqual(extract(NOTE.replace(' г.р.', ''))[0], extract(NOTE)[0])
+
     def test_ambiguous_invalid_incomplete(self):
         for text in (NOTE + '\n' + NOTE, NOTE.replace('01.02.1985', '31.02.1985'), NOTE.replace('код подр. 000-001.', ''), NOTE.replace('17.07.2020', '17.07.1980')):
             with self.subTest(text=text):
@@ -116,3 +126,15 @@ class ImportTests(TestCase):
         self.assertNotContains(response, 'SECRET SQL')
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.passport_number, '')
+
+    def test_new_format_fills_only_empty_fields_preserving_customer_name(self):
+        note = 'Тестов Иван Иванович ' + NOTE.replace(' г.р.', '')
+        Customer.objects.filter(pk=self.customer.pk).update(passport=note, birthday=date(1985, 2, 1))
+        with patch('crm.customer_passport_notes_views.backup', return_value=Path('test.sqlite3')):
+            self.assertContains(self.client.post(self.url), 'Обновлено заказчиков: 1')
+            self.assertContains(self.client.post(self.url), 'Обновлено заказчиков: 0')
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.name, 'Тест')
+        self.assertEqual(self.customer.passport, note)
+        self.assertEqual(self.customer.birthday, date(1985, 2, 1))
+        self.assertEqual(self.customer.passport_number, '0000000001')

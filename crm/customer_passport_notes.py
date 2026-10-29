@@ -5,7 +5,7 @@ from datetime import date, datetime
 DATE = r'\d{2}[./]\d{2}[./]\d{4}'
 NUMBER = re.compile(r'\bпаспорт(?:\s+РФ)?\s*[:№]?\s*(\d{2}\s*\d{2})\s+(\d{6})(?!\d)', re.I)
 RECORD = re.compile(
-    rf'(?P<birth>{DATE})\s*г?\.?\s*р\.?\s*[,;]?\s*'
+    rf'(?<!\d)(?P<birth>{DATE})\s*(?:г?\.?\s*р\.?)?\s*[,;]?\s*'
     r'паспорт(?:\s+РФ)?\s*[:№]?\s*(?P<series>\d{2}\s*\d{2})\s+(?P<number>\d{6})(?!\d)'
     rf'\s*[,;]?\s*выдан\s*[:]?\s*(?P<issued>{DATE})\s+'
     r'(?P<authority>[^\n]{5,500}?)\s*[,;]?\s*код\s+(?:подр\.?|подразделения)\s*[:.]?\s*'
