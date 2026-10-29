@@ -221,7 +221,7 @@ class ETAExchangeTests(TestCase):
         original_phone=self.customer.main_phone;original_passport=self.tourist.passport_number
         p=copy.deepcopy(self.app.preparation)
         data={key:('on' if value is True else '' if value is None or value is False else str(value)) for key,value in p.items() if key not in ('answers','confirmed_by','confirmed_at')}
-        data.update(version=str(self.app.updated_at),**{'answers-TOTAL_FORMS':'1','answers-INITIAL_FORMS':'1','answers-MIN_NUM_FORMS':'0','answers-MAX_NUM_FORMS':'50',
+        data.update(version=str(self.app.updated_at),source_hash=self.app.source_hash,**{'answers-TOTAL_FORMS':'1','answers-INITIAL_FORMS':'1','answers-MIN_NUM_FORMS':'0','answers-MAX_NUM_FORMS':'50',
             'answers-0-question':'Covid Vaccination Status','answers-0-answer':'Yes','answers-0-confirmed':'on'})
         response=self.client.post(reverse('eta_prepare',args=[self.contract.pk,self.app.pk]),data)
         self.assertEqual(response.status_code,302)
@@ -260,10 +260,13 @@ class ETAExchangeTests(TestCase):
         self.assertTrue(eta.review_issues(self.app))
         self.assertEqual(self.client.get(reverse('eta_detail',args=[self.contract.pk,self.app.pk])).status_code,200)
 
-    def test_payer_change_is_detected(self):
+    def test_live_crm_change_does_not_discard_result_for_frozen_export(self):
         batch=self.export()
         self.customer.address='Changed test address';self.customer.save()
-        with self.assertRaises(ValidationError):eta.import_results(self.contract,self.result(batch),self.user)
+        self.assertEqual(eta.import_results(self.contract,self.result(batch),self.user),1)
+        self.app.refresh_from_db();self.assertEqual(self.app.status,'awaiting_confirmation')
+        self.assertNotEqual(self.app.source_hash,eta.source_hash(self.contract,self.tourist))
+        self.assertNotEqual(batch.payload['applicants'][0]['data']['home']['address'],self.customer.address)
 
     def test_referral_before_submission_is_recorded_without_inventing_application_number(self):
         batch=self.export();payload=self.result(batch,'referral')
@@ -293,3 +296,18 @@ class ETAExchangeTests(TestCase):
         initial=eta.initial_data(self.contract,self.tourist)
         self.assertEqual(initial['hotel_name'],'TEST HOTEL')
         self.assertFalse(initial.get('hotel_address'))
+
+    def test_updated_crm_replaces_saved_eta_source_fields_not_confirmed_history(self):
+        self.app.preparation.update(hotel_address='Previous hotel address',travel_last_14_days='Confirmed different history')
+        self.app.save()
+        self.contract.hotel='CURRENT CRM HOTEL';self.contract.source_data['hotel']=[{'name':'CURRENT CRM HOTEL','address':'Current CRM hotel address'}];self.contract.save()
+        self.customer.address='Current payer address';self.customer.main_phone='+70000000002';self.customer.save()
+        response=self.client.get(reverse('eta_prepare',args=[self.contract.pk,self.app.pk]))
+        form=response.context['form']
+        self.assertEqual(form['hotel_name'].value(),'CURRENT CRM HOTEL')
+        self.assertEqual(form['hotel_address'].value(),'Current CRM hotel address')
+        self.assertEqual(form['home_address'].value(),'Current payer address')
+        self.assertEqual(form['phone'].value(),'+70000000002')
+        self.assertEqual(form['travel_last_14_days'].value(),'Confirmed different history')
+        self.assertFalse(form['travel_confirmed'].value())
+        self.assertEqual(form['home_city'].value(),'')

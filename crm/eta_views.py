@@ -84,16 +84,24 @@ def prepare(request,pk,application_id):
         messages.info(request,'Задание уже передано. Для исправлений сначала проверьте на портале отсутствие принятой заявки и верните задание на подготовку.')
         return redirect('eta_detail',pk=pk,application_id=app.pk)
     current_hash=eta.source_hash(contract,app.tourist)
-    initial=eta.initial_data(contract,app.tourist);initial.update(app.preparation)
+    source=eta.initial_data(contract,app.tourist)
+    initial=dict(source);initial.update(app.preparation)
     changed=bool(app.source_hash and app.source_hash!=current_hash)
     if changed:
+        # CRM is authoritative. Agency defaults are not new facts about a person.
+        initial.update({key:value for key,value in source.items() if key not in ('travel_last_14_days','own_passport')})
+        if app.preparation.get('hotel_name')!=source.get('hotel_name'):
+            initial['hotel_address']=source.get('hotel_address','')
+        if app.preparation.get('home_address')!=source.get('home_address'):
+            initial.update(home_city='',home_region='',home_country='')
         initial.update({key:False for key in ('identity_confirmed','travel_confirmed','previous_visas_confirmed','travel_history_confirmed','portal_rules_checked')})
     answers=app.preparation.get('answers') or [{'question':'Covid Vaccination Status','answer':'Yes','confirmed':False}]
     if changed:answers=[{**row,'confirmed':False} for row in answers]
     form=ETAPreparationForm(request.POST if request.method=='POST' else None,initial=initial,contract=contract,tourist=app.tourist)
     answer_set=ETAAnswerSet(request.POST if request.method=='POST' else None,initial=answers,prefix='answers')
     if request.method=='POST' and form.is_valid() and answer_set.is_valid():
-        if request.POST.get('version')!=str(app.updated_at):form.add_error(None,'Задание изменилось в другом окне. Обновите страницу.')
+        if request.POST.get('source_hash')!=current_hash:form.add_error(None,'Данные CRM обновились после открытия формы. Обновите страницу: будут подставлены актуальные сведения.')
+        elif request.POST.get('version')!=str(app.updated_at):form.add_error(None,'Задание изменилось в другом окне. Обновите страницу.')
         else:
             values={}
             for key,value in form.cleaned_data.items():
@@ -117,7 +125,7 @@ def prepare(request,pk,application_id):
         ('Дети и представитель',['parent_tourist','relationship','guardian_details']),
         ('Ожидаемый сбор',['expected_fee','expected_fee_currency'])]
     return render(request,'crm/eta/prepare.html',{'contract':contract,'application':app,'form':form,'answers':answer_set,
-        'issues':eta.assess(app),'source_changed':changed,'version':str(app.updated_at),'email':eta.EMAIL,'field_groups':[(title,[form[key] for key in keys]) for title,keys in groups]})
+        'issues':eta.assess(app),'source_changed':changed,'source_hash':current_hash,'version':str(app.updated_at),'email':eta.EMAIL,'field_groups':[(title,[form[key] for key in keys]) for title,keys in groups]})
 
 
 @login_required

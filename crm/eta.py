@@ -301,11 +301,6 @@ def import_results(contract,payload,actor):
     receipt=digest(payload)
     if receipt in batch.receipt_hashes:return 0
     entries={row['application_id']:row for row in batch.payload['applicants']}
-    required={r.get('application_id') for r in results if isinstance(r,dict) and isinstance(r.get('application_id'),str)}
-    for original in (entry for key,entry in entries.items() if key in required):
-        tourist=linked(contract).filter(pk=original['tourist_id']).first()
-        if tourist is None or source_hash(contract,tourist)!=original['source_sha256']:
-            raise ValidationError('Исходные данные пакета изменились. Результат требует ручной сверки.')
     seen=set();changed=0
     for r in results:
         if not isinstance(r,dict):raise ValidationError('Некорректная запись результата.')
@@ -319,7 +314,6 @@ def import_results(contract,payload,actor):
         try:app=ETAApplication.objects.select_for_update().select_related('tourist','contract').get(pk=key,contract=contract,active_export=batch)
         except ETAApplication.DoesNotExist:raise ValidationError('Задание больше не относится к этой передаче.') from None
         if type(r.get('tourist_id')) is not int or r.get('tourist_id')!=app.tourist_id or r.get('data_sha256')!=entry['data_sha256']:raise ValidationError('Результат относится к другому туристу или другой версии данных.')
-        if app.source_hash!=source_hash(contract,app.tourist):raise ValidationError('Данные туриста/договора изменились после передачи. Результат требует ручной сверки.')
         if 'submission_uncertain' in r and type(r['submission_uncertain']) is not bool:raise ValidationError('Некорректный признак неопределённого результата отправки.')
         stage=r.get('stage')
         if stage not in TRANSITIONS.get(app.status,set()):raise ValidationError('Недопустимый переход этапа ETA.')
