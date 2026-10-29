@@ -100,3 +100,19 @@ class ImportTests(TestCase):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.admin)
         self.assertEqual(client.post(self.url).status_code, 403)
+
+    def test_permission_error_identifies_backup_stage_without_private_paths(self):
+        with patch('crm.customer_passport_notes_views.backup', side_effect=PermissionError(13, 'SECRET PATH')):
+            response = self.client.post(self.url)
+        self.assertContains(response, 'Создание и проверка резервной копии: Нет прав')
+        self.assertNotContains(response, 'SECRET PATH')
+
+    def test_database_failure_rolls_back_and_keeps_backup_link(self):
+        from django.db import OperationalError
+        with patch('crm.customer_passport_notes_views.backup', return_value=Path('test.sqlite3')), patch('crm.customer_passport_notes_views.AuditEvent.objects.create', side_effect=OperationalError('SECRET SQL')):
+            response = self.client.post(self.url)
+        self.assertContains(response, 'Заполнение паспортных полей: Код: OperationalError')
+        self.assertContains(response, 'Резервная копия сохранена')
+        self.assertNotContains(response, 'SECRET SQL')
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.passport_number, '')

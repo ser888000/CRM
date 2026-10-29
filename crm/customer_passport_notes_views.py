@@ -6,7 +6,7 @@ from pathlib import Path
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core import signing
-from django.db import transaction
+from django.db import transaction, DatabaseError
 from django.http import FileResponse, Http404
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
@@ -20,9 +20,35 @@ def backup_folder():
     return Path(settings.DATABASES['default']['NAME']).resolve().parent / 'customer-passport-backups'
 
 
+class BackupError(ValueError):
+    pass
+
+
+def failure_message(error, stage):
+    """Only known codes, never exception text (it may contain personal data/SQL)."""
+    if isinstance(error, PermissionError):
+        detail = 'Нет прав на чтение базы или запись резервной копии.'
+    elif isinstance(error, OSError) and error.errno == 28:
+        detail = 'На диске недостаточно свободного места.'
+    elif isinstance(error, BackupError):
+        detail = str(error)  # Our own fixed messages only.
+    else:
+        original = error.__cause__ or error
+        code = getattr(original, 'sqlite_errorname', '')
+        if code == 'SQLITE_BUSY' or code == 'SQLITE_LOCKED':
+            detail = 'База занята другим процессом. Повторите после завершения других операций.'
+        elif code == 'SQLITE_READONLY':
+            detail = 'База или каталог копии доступны только для чтения.'
+        else:
+            detail = 'Код: ' + type(error).__name__ + ((' / ' + code) if code else '')
+            if isinstance(error, OSError) and error.errno is not None:
+                detail += ' / errno=' + str(error.errno)
+    return f'{stage}: {detail} Изменения не применены.'
+
+
 def backup():
     if settings.DATABASES['default']['ENGINE'] != 'django.db.backends.sqlite3':
-        raise ValueError('Для этой базы требуется отдельный способ резервного копирования. Изменений нет.')
+        raise BackupError('Для этой базы требуется отдельный способ резервного копирования. Изменений нет.')
     folder = backup_folder()
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = folder / (uuid.uuid4().hex + '.sqlite3')
@@ -33,7 +59,7 @@ def backup():
         with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as source, sqlite3.connect(path) as target:
             source.backup(target)
             if target.execute('PRAGMA quick_check').fetchone() != ('ok',):
-                raise ValueError('Резервная копия не прошла проверку. Изменений нет.')
+                raise BackupError('Резервная копия не прошла проверку. Изменений нет.')
     except Exception:
         path.unlink(missing_ok=True)
         raise
@@ -47,11 +73,15 @@ def page(request):
     require_admin(request.user)
     result = None
     error = ''
+    backup_token = ''
+    stage = 'Создание и проверка резервной копии'
     if request.method == 'POST':
         try:
             path = backup()  # Must succeed before the first update.
+            backup_token = signing.dumps(path.name, salt='customer-passport-backup')
+            stage = 'Заполнение паспортных полей'
             result = {'changed': 0, 'fields': 0, 'unchanged': 0, 'review': [],
-                      'backup': signing.dumps(path.name, salt='customer-passport-backup')}
+                      'backup': backup_token}
             with transaction.atomic():
                 for customer in Customer.objects.select_for_update().order_by('pk').iterator():
                     updates, reason = plan(customer)
@@ -66,10 +96,10 @@ def page(request):
                         result['fields'] += len(updates)
                     else:
                         result['unchanged'] += 1
-        except (OSError, sqlite3.Error, ValueError):
+        except (OSError, sqlite3.Error, DatabaseError, ValueError) as exc:
             result = None
-            error = 'Не удалось сохранить и проверить резервную копию или обработать записи. Изменения не применены.'
-    return render(request, 'crm/customer_passport_notes.html', {'result': result, 'error': error})
+            error = failure_message(exc, stage)
+    return render(request, 'crm/customer_passport_notes.html', {'result': result, 'error': error, 'backup_token': backup_token})
 
 
 @login_required
