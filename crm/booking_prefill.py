@@ -80,7 +80,9 @@ def select(request):
         else:
             contract=get_object_or_404(Contract,pk=key)
             request.session[SELECTION]={'id':contract.pk,'exchange_id':str(contract.exchange_id),'expires':(timezone.now()+timedelta(minutes=30)).timestamp()}
-            return redirect('booking_prefill_select')
+            from django.contrib import messages
+            messages.success(request,'Данные договора подготовлены. На сайте АБОРИГЕН ТУР нажмите «Заполнить из договора».')
+            return redirect('contract_card',pk=contract.pk)
     query=request.GET.get('q','').strip()[:100]
     contracts=Contract.objects.select_related('customer','operator').order_by('-date','-pk')
     specific=request.GET.get('contract','')
@@ -95,31 +97,34 @@ def data(request):
     if request.headers.get('Origin') not in ORIGINS or not access(request):return reply(request,{'enabled':False},403)
     contract=selected_contract(request)
     if not contract:return reply(request,{'error':'Выберите договор в CRM. Выбор действует 30 минут.'},409)
-    issues=[];tourists=[];seen=set()
-    if not contract.start:issues.append('В договоре не указана дата начала тура.')
+    tourists=[];seen=set()
+    start=None
+    if request.GET.get('start'):
+        from django import forms
+        try:start=forms.DateField().clean(request.GET['start'])
+        except forms.ValidationError:return reply(request,{'error':'Укажите корректную дату начала новой поездки.'},400)
+    if not start:return reply(request,{'error':'Укажите дату начала новой поездки.'},422)
     def day(value):return value.strftime('%d.%m.%Y') if value else ''
     import re
     for line in contract.lines.select_related('tourist').order_by('pk'):
         person=line.tourist
         if not person or person.pk in seen:continue
         seen.add(person.pk)
-        label=str(person)
-        if not person.birthday:issues.append(f'{label}: не указана дата рождения.')
-        age=age_on(person.birthday,contract.start) if person.birthday and contract.start else None
-        if age is not None and age<0:issues.append(f'{label}: дата рождения позже начала тура.')
-        if not person.surname or not person.given_name:issues.append(f'{label}: заполните фамилию и имя по паспорту.')
-        if person.passport_type=='0' and not all(re.fullmatch(r"[A-Za-z][A-Za-z '\-]*",value or '') for value in (person.surname,person.given_name)):issues.append(f'{label}: для загранпаспорта нужны имя и фамилия латиницей.')
-        if person.gender not in ('male','female'):issues.append(f'{label}: не указан пол.')
-        tourists.append({'id':person.pk,'age':age,'birthday_iso':person.birthday.isoformat() if person.birthday else '',
+        label=str(person);person_issues=[]
+        if not person.birthday:person_issues.append(f'{label}: не указана дата рождения.')
+        age=age_on(person.birthday,start) if person.birthday and start else None
+        if age is not None and age<0:person_issues.append(f'{label}: дата рождения позже начала тура.')
+        if not person.surname or not person.given_name:person_issues.append(f'{label}: заполните фамилию и имя по паспорту.')
+        if person.passport_type=='0' and not all(re.fullmatch(r"[A-Za-z][A-Za-z '\-]*",value or '') for value in (person.surname,person.given_name)):person_issues.append(f'{label}: для загранпаспорта нужны имя и фамилия латиницей.')
+        if person.gender not in ('male','female'):person_issues.append(f'{label}: не указан пол.')
+        tourists.append({'issues':person_issues,'id':person.pk,'age':age,'birthday_iso':person.birthday.isoformat() if person.birthday else '',
             'gender':person.gender,'nationality':person.nationality,'document_type':person.passport_type,
             'SURNAME':person.surname,'NAME':person.given_name,'BIRTHDAY':day(person.birthday),'PASSPORTNUMBER':person.passport_number,
             'PASSPORTISSUE':day(person.issued),'PASSPORTEXPIRY':day(person.expires),'PASSPORTAUTHORITY':person.issued_by})
-    if not tourists:issues.append('В договоре нет туристов, связанных со справочником.')
-    if issues:return reply(request,{'error':'Проверьте данные договора перед заполнением.','issues':issues},422)
     tourists.sort(key=lambda item:(item['birthday_iso'],item['id']))
     customer=contract.customer
     if customer.kind!='person':return reply(request,{'error':'Покупатель в форме Турвизора должен быть физическим лицом. В договоре выбрано юридическое лицо.'},422)
-    return reply(request,{'enabled':True,'test_only':False,'contract':{'id':contract.pk,'number':str(contract),'start':contract.start.isoformat()},
+    return reply(request,{'enabled':True,'test_only':False,'contract':{'id':contract.pk,'number':str(contract),'start':start.isoformat()},
         'customer':{'Name':customer.name,'Phone':customer.main_phone,'Email':customer.main_email,'Address':customer.address,
             'Birthday':day(customer.birthday),'PassportNumber':customer.passport_number,'PassportIssue':day(customer.passport_issued),
             'PassportAuthority':customer.passport_issued_by,'PassportAuthorityCode':customer.passport_code},'tourists':tourists})

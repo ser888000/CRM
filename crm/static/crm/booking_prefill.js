@@ -8,13 +8,14 @@
  const endpoint=new URL('/booking-prefill/status/',script.src);
  if(endpoint.origin!=='https://crm.aborigen-tour.ru')return;
  window.__aborigenBookingPrefill=true;
- let saved=null,panel,button,status,reset;
+ let saved=null,panel,button,status,reset,startDate,sourceLabel;
  async function authorize(){
   const response=await fetch(endpoint,{credentials:'include',cache:'no-store',redirect:'error'});
   if(!response.ok)return null;
   const data=await response.json();return data.enabled?data:null;
  }
  const touristFields={SURNAME:'TVTouristSurname',NAME:'TVTouristName',BIRTHDAY:'TVTouristBirthday',PASSPORTNUMBER:'TVPassportNumber',PASSPORTISSUE:'TVPassportIssue',PASSPORTEXPIRY:'TVPassportExpiry',PASSPORTAUTHORITY:'TVPassportAuthority'};
+ const fieldLabels={SURNAME:'фамилия',NAME:'имя',BIRTHDAY:'дата рождения',PASSPORTNUMBER:'серия и номер паспорта',PASSPORTISSUE:'дата выдачи паспорта',PASSPORTEXPIRY:'срок действия паспорта',PASSPORTAUTHORITY:'кем выдан паспорт'};
  const customerFields={Name:'TVCustomerContactsName',Phone:'TVCustomerContactsPhone',Email:'TVCustomerContactsEmail',Address:'TVCustomerContactsAddress',Birthday:'TVCustomerContactsBirthday',PassportNumber:'TVCustomerContactsPassportNumber',PassportIssue:'TVCustomerContactsPassportIssue',PassportAuthority:'TVCustomerContactsPassportAuthority',PassportAuthorityCode:'TVCustomerContactsPassportAuthorityCode'};
  const visible=selector=>[...document.querySelectorAll(selector)].filter(node=>node.getClientRects().length);
  function inputFor(binding){
@@ -60,9 +61,10 @@
   const name=String(value||'').toLowerCase().replace(/[^a-zа-яё0-9]/g,'');
   return ['россия','российскаяфедерация','russia','russianfederation','rus','ru','643'].includes(name)?'ru':name;
  }
- function matchPeople(people,tourists){
-  if(people.length!==tourists.length)throw Error('Состав не совпал: в форме '+people.length+', в договоре '+tourists.length+' туристов. Измените состав выбранного тура.');
-  const remaining=[...tourists].sort((a,b)=>a.birthday_iso.localeCompare(b.birthday_iso)||a.id-b.id),assigned=[];
+ function makePlan(people,tourists){
+  if(!people.length)throw Error('Откройте форму бронирования тура.');
+  const candidates=[...tourists].filter(person=>Number.isInteger(person.age)&&person.age>=0&&!(person.issues||[]).length).sort((a,b)=>a.birthday_iso.localeCompare(b.birthday_iso)||a.id-b.id);
+  const remaining=[...candidates],assigned=Array(people.length).fill(null);
   const slots=people.map((node,index)=>{
    const header=node.querySelector('.TVTourBuyTouristItemHeader')?.textContent.trim()||'';
    if(/^Взрослый турист/i.test(header))return {index,header,priority:1,eligible:person=>person.age>=18};
@@ -73,34 +75,63 @@
    }
    throw Error('Не распознан возраст блока туриста: '+header);
   });
-  // Exact age first, so a flexible under-2 slot cannot consume the only 1-year-old.
-  for(const slot of slots.sort((a,b)=>a.priority-b.priority||a.index-b.index)){
+  for(const slot of [...slots].sort((a,b)=>a.priority-b.priority||a.index-b.index)){
    const index=remaining.findIndex(slot.eligible);
-   if(index<0)throw Error('В договоре нет подходящего туриста для «'+slot.header+'». Проверьте возраст на начало тура.');
-   assigned[slot.index]=remaining.splice(index,1)[0];
+   if(index>=0)assigned[slot.index]=remaining.splice(index,1)[0];
   }
-  return assigned;
+  const extra=remaining.some(person=>slots.some(slot=>slot.eligible(person)));
+  return {slots,candidates,assigned,extra};
+ }
+ function choosePeople(plan,data){
+  return new Promise(resolve=>{
+   const dialog=document.createElement('dialog');dialog.className='aborigen-prefill-choice';
+   Object.assign(dialog.style,{maxWidth:'650px',width:'90vw',maxHeight:'80vh',overflow:'auto',padding:'24px',borderRadius:'12px',border:'1px solid #183f35',font:'15px sans-serif'});
+   const title=document.createElement('h3');title.textContent='Кого перенести из договора '+data.contract.number+'?';
+   const hint=document.createElement('p');hint.textContent='Выберите нужных туристов. Пустые места можно заполнить вручную. Возраст рассчитан на '+data.contract.start+'.';
+   dialog.append(title,hint);const selects=[];
+   for(const slot of plan.slots){
+    const label=document.createElement('label');label.textContent=slot.header;label.style.display='block';label.style.marginBottom='14px';
+    const select=document.createElement('select');select.style.width='100%';select.append(new Option('Оставить пустым — введу вручную',''));
+    for(const person of plan.candidates.filter(slot.eligible))select.append(new Option(person.SURNAME+' '+person.NAME+' · '+person.BIRTHDAY+' · '+person.age+' лет',String(person.id)));
+    select.value=String(plan.assigned[slot.index]?.id||'');label.append(select);dialog.append(label);selects.push(select);
+   }
+   const error=document.createElement('p');error.setAttribute('role','alert');dialog.append(error);
+   const apply=document.createElement('button');apply.type='button';apply.textContent='Заполнить выбранных';
+   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Отмена';cancel.style.marginLeft='12px';
+   function finish(result){dialog.close();dialog.remove();resolve(result);}
+   apply.onclick=()=>{const ids=selects.map(select=>select.value),chosen=ids.filter(Boolean);if(new Set(chosen).size!==chosen.length){error.textContent='Один турист выбран несколько раз. Выберите разных или оставьте место пустым.';return;}finish(ids.map(id=>plan.candidates.find(person=>String(person.id)===id)||null));};
+   cancel.onclick=()=>finish(null);dialog.addEventListener('cancel',event=>{event.preventDefault();finish(null)});
+   dialog.append(apply,cancel);document.body.append(dialog);dialog.showModal();
+  });
  }
  async function fill(){
   button.disabled=true;
   try{
-   if(!await authorize()){panel.remove();return;}
-   const response=await fetch(new URL('/booking-prefill/data/',endpoint),{credentials:'include',cache:'no-store',redirect:'error'});
+   const auth=await authorize();if(!auth){panel.remove();return;}
+   sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Сначала нажмите «Данные в Турвизор» в нужном договоре CRM.';
+   if(!startDate.value)throw Error('Укажите дату начала новой поездки для правильного возраста туристов.');
+   const dataUrl=new URL('/booking-prefill/data/',endpoint);dataUrl.searchParams.set('start',startDate.value);
+   const response=await fetch(dataUrl,{credentials:'include',cache:'no-store',redirect:'error'});
    const data=await response.json();
    if(!response.ok)throw Error([data.error,...(data.issues||[])].join('\n'));
+   const formHash=location.hash;
    const people=visible('.TVTourBuyTouristItemControl');
-   const assigned=matchPeople(people,data.tourists),warnings=[];
+   const plan=makePlan(people,data.tourists),warnings=[];
+   const assigned=plan.extra?await choosePeople(plan,data):plan.assigned;
+   if(!assigned)return;
+   if(formHash!==location.hash||startDate.value!==data.contract.start||visible('.TVTourBuyTouristItemControl').length!==people.length||people.some((node,index)=>visible('.TVTourBuyTouristItemControl')[index]!==node))throw Error('Форма или дата тура изменились. Повторите заполнение.');
    const bindings=[];
    assigned.forEach((person,index)=>{
+    if(!person)return;
     const nationality=people[index].querySelector('.TVTouristNationality input')?.value||'';
-    if(person.nationality&&normalizeCountry(person.nationality)!==normalizeCountry(nationality))throw Error('Гражданство туриста '+person.SURNAME+' не совпало с формой. Проверьте его до заполнения.');
+    if(person.nationality&&normalizeCountry(person.nationality)!==normalizeCountry(nationality)){warnings.push(person.SURNAME+': гражданство не совпало с формой, введите туриста вручную');assigned[index]=null;return;}
     if(!person.document_type)warnings.push(person.SURNAME+': в CRM не указан тип паспорта, проверьте документ');
     if(!person.nationality)warnings.push(person.SURNAME+': гражданство в CRM не указано, в форме останется '+(nationality||'текущее значение'));
-    if(person.document_type==='1'&&/Заграничный паспорт/i.test(people[index].textContent))throw Error(person.SURNAME+': в CRM российский паспорт, а в форме нужен заграничный.');
+    if(person.document_type==='1'&&/Заграничный паспорт/i.test(people[index].textContent)){warnings.push(person.SURNAME+': нужен загранпаспорт, введите туриста вручную');assigned[index]=null;return;}
     const surnameLabel=people[index].querySelector('.TVTouristSurname')?.textContent||'';
-    if(/латиниц/i.test(surnameLabel)&&!(/^[A-Za-z '\-]+$/.test(person.SURNAME)&&/^[A-Za-z '\-]+$/.test(person.NAME)))throw Error(person.SURNAME+': для этой формы нужны имя и фамилия латиницей по паспорту.');
+    if(/латиниц/i.test(surnameLabel)&&!(/^[A-Za-z '\-]+$/.test(person.SURNAME)&&/^[A-Za-z '\-]+$/.test(person.NAME))){warnings.push(person.SURNAME+': нужны имя и фамилия латиницей, введите туриста вручную');assigned[index]=null;return;}
     for(const [key,className] of Object.entries(touristFields)){
-     if(!person[key])warnings.push(person.SURNAME+': не заполнено '+className.replace(/^TV/,''));
+     if(!person[key])warnings.push(person.SURNAME+': не заполнено '+fieldLabels[key]);
      bindings.push({person:index,className,value:person[key]||''});
     }
     bindings.push({person:index,className:'TVTouristGenderBlock',kind:'gender',value:person.gender});
@@ -113,12 +144,13 @@
     const content=node.value.replace(/[\s_().+\-]/g,'');
     if(content&&(binding.className!=='TVCustomerContactsPhone'||content!=='7'))throw Error('В форме уже есть данные. Они не заменяются. Откройте пустую форму или уберите предыдущее заполнение.');
    }
-   const roster=assigned.map((person,index)=>(index+1)+'. '+person.SURNAME+' '+person.NAME+' — '+person.BIRTHDAY+' ('+person.age+' лет)').join('\n');
-   if(!window.confirm('Заполнить из договора '+data.contract.number+'?\nНачало тура в договоре: '+data.contract.start+'\nЗаказчик: '+data.customer.Name+'\n\nТуристы в порядке полей формы:\n'+roster+(warnings.length?'\n\nПроверить вручную:\n'+warnings.join('\n'):'')+'\n\nОтправка заявки и оплата выполняются вами отдельно.'))return;
    saved={hash:location.hash,bindings};
    try{
     for(const binding of bindings)setInput(binding,binding.value);
-    reset.hidden=false;status.textContent='Заполнено из договора '+data.contract.number+'. Проверьте все поля, гражданство и даты перед бронированием.';
+    reset.hidden=false;const empty=assigned.map((person,index)=>person?null:plan.slots[index].header).filter(Boolean);
+    const unused=data.tourists.filter(person=>!assigned.some(item=>item?.id===person.id));
+    const issues=unused.flatMap(person=>person.issues||[]);
+    status.textContent='Заполнено из договора '+data.contract.number+'.'+(empty.length?' Введите вручную: '+empty.join(', ')+'.':'')+(unused.length?' Не перенесено из старого состава: '+unused.length+'.':'')+' Проверьте поля перед бронированием.'+(warnings.length?' '+warnings.join('; '):'')+(issues.length?' '+issues.join('; '):'');
    }catch(error){reset.hidden=false;restore();throw error;}
   }catch(error){status.textContent=error.message||'Не удалось заполнить форму.';}
   finally{button.disabled=false;}
@@ -130,15 +162,15 @@
    for(let depth=0;parent&&depth<5;depth++,parent=parent.parentElement)parents.push({tag:parent.tagName,classes:String(parent.className||'').slice(0,240)});
    return {tag:node.tagName,type:node.type||'',name:node.name||'',id:node.id||'',placeholder:node.getAttribute('placeholder')||'',classes:String(node.className||'').slice(0,240),parents};
   });
-  return JSON.stringify({probe_version:5,page:address(location.href),runtime:{TV:typeof window.TV,initTv:typeof window.initTv,keys:Object.keys(window.TV||{}).sort().slice(0,160)},scripts:[...document.scripts].filter(node=>node.src).map(node=>address(node.src)),frames:[...document.querySelectorAll('iframe')].map(node=>address(node.src)),fields},null,2);
+  return JSON.stringify({probe_version:6,page:address(location.href),runtime:{TV:typeof window.TV,initTv:typeof window.initTv,keys:Object.keys(window.TV||{}).sort().slice(0,160)},scripts:[...document.scripts].filter(node=>node.src).map(node=>address(node.src)),frames:[...document.querySelectorAll('iframe')].map(node=>address(node.src)),fields},null,2);
  }
- function show(){
+ function show(auth){
   if(!document.querySelector('.tv-moduleid-898'))return;
   panel=document.createElement('aside');panel.setAttribute('aria-label','Тест заполнения из CRM');
-  Object.assign(panel.style,{position:'fixed',left:'16px',bottom:'16px',zIndex:'2147483000',maxWidth:'330px',padding:'14px',border:'2px solid #183f35',borderRadius:'10px',background:'#fffbe9',color:'#183f35',font:'14px sans-serif',boxShadow:'0 3px 16px #0003'});
+  Object.assign(panel.style,{position:'fixed',left:'16px',bottom:'16px',zIndex:'2147483000',maxWidth:'330px',maxHeight:'60vh',overflow:'auto',padding:'14px',border:'2px solid #183f35',borderRadius:'10px',background:'#fffbe9',color:'#183f35',font:'14px sans-serif',boxShadow:'0 3px 16px #0003'});
   const title=document.createElement('strong');title.textContent='CRM · заполнение из договора';
   button=document.createElement('button');button.type='button';button.textContent='Заполнить из договора';button.onclick=fill;
-  status=document.createElement('p');status.setAttribute('role','status');status.textContent='Подготовьте договор в CRM и откройте пустую форму бронирования.';
+  status=document.createElement('p');status.setAttribute('role','status');status.textContent='Откройте форму тура. Недостающих туристов можно ввести вручную.';
   reset=document.createElement('button');reset.type='button';reset.textContent='Убрать подставленные данные';reset.hidden=true;
   reset.onclick=restore;
   const diagnosticButton=document.createElement('button');diagnosticButton.type='button';diagnosticButton.textContent='Скопировать диагностику';
@@ -147,9 +179,11 @@
    try{await navigator.clipboard.writeText(text);status.textContent='Диагностика скопирована. Пришлите её в чат. Значения полей в отчёт не включены.';}
    catch{const output=document.createElement('textarea');output.readOnly=true;output.value=text;output.rows=8;output.style.width='100%';panel.append(output);output.select();status.textContent='Скопируйте этот отчёт и пришлите в чат.';}
   };
-  const choose=document.createElement('a');choose.href=new URL('/booking-prefill/select/',endpoint).href;choose.target='_blank';choose.rel='noopener';choose.textContent='Выбрать договор в CRM';
-  panel.append(choose,document.createElement('br'),title,document.createElement('br'),button,status,reset,document.createElement('br'),diagnosticButton);document.body.append(panel);
+  sourceLabel=document.createElement('p');sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Нажмите «Данные в Турвизор» в исходном договоре CRM.';
+  const dateLabel=document.createElement('label');dateLabel.textContent='Начало новой поездки';dateLabel.style.display='block';startDate=document.createElement('input');startDate.type='date';dateLabel.append(startDate);
+  panel.append(title,sourceLabel,dateLabel,document.createElement('br'),button,status,reset,document.createElement('br'),diagnosticButton);document.body.append(panel);
  }
- async function init(){try{if(await authorize())show();}catch{/* Public visitors see no UI or technical errors. */}}
+ window.addEventListener('hashchange',()=>{if(startDate){startDate.value='';status.textContent='Выбран другой тур. Укажите дату начала новой поездки.';}});
+ async function init(){try{const auth=await authorize();if(auth)show(auth);}catch{/* Public visitors see no UI or technical errors. */}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();

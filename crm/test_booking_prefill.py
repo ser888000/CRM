@@ -63,7 +63,7 @@ class RealBookingPrefillTests(TestCase):
 
     def test_real_export_age_sort_dedup_and_customer_separate(self):
         self.assertEqual(self.choose().status_code,302)
-        response=self.client.get('/booking-prefill/data/',HTTP_ORIGIN=self.origin)
+        response=self.client.get('/booking-prefill/data/?start=2026-12-24',HTTP_ORIGIN=self.origin)
         self.assertEqual(response.status_code,200)
         data=response.json();self.assertFalse(data['test_only'])
         self.assertEqual([p['age'] for p in data['tourists']],[46,36,9,1])
@@ -80,20 +80,33 @@ class RealBookingPrefillTests(TestCase):
         viewer=get_user_model().objects.create_user('contract-only')
         viewer.user_permissions.add(Permission.objects.get(content_type__app_label='crm',codename='view_contract'))
         self.client.force_login(viewer)
-        self.assertEqual(self.client.get('/booking-prefill/data/',HTTP_ORIGIN=self.origin).status_code,403)
+        self.assertEqual(self.client.get('/booking-prefill/data/?start=2026-12-24',HTTP_ORIGIN=self.origin).status_code,403)
         self.assertEqual(self.client.post('/booking-prefill/select/',{'contract':self.contract.pk}).status_code,403)
 
     def test_expired_selection_and_foreign_origin_return_no_personal_data(self):
         self.choose();session=self.client.session;session[SELECTION]['expires']=timezone.now().timestamp()-1;session.save()
-        response=self.client.get('/booking-prefill/data/',HTTP_ORIGIN=self.origin)
+        response=self.client.get('/booking-prefill/data/?start=2026-12-24',HTTP_ORIGIN=self.origin)
         self.assertEqual(response.status_code,409);self.assertNotIn('customer',response.json())
-        self.choose();response=self.client.get('/booking-prefill/data/',HTTP_ORIGIN='https://evil.invalid')
+        self.choose();response=self.client.get('/booking-prefill/data/?start=2026-12-24',HTTP_ORIGIN='https://evil.invalid')
         self.assertEqual(response.status_code,403);self.assertNotIn('customer',response.json())
 
-    def test_missing_birthday_blocks_export_and_age_changes_on_birthday(self):
+    def test_missing_birthday_marks_one_person_without_blocking_other_people(self):
         self.assertEqual(age_on(date(2008,12,25),date(2026,12,24)),17)
         self.assertEqual(age_on(date(2008,12,24),date(2026,12,24)),18)
         self.choose();person=self.contract.lines.first().tourist;person.birthday=None;person.save()
-        response=self.client.get('/booking-prefill/data/',HTTP_ORIGIN=self.origin)
-        self.assertEqual(response.status_code,422)
-        self.assertNotIn('tourists',response.json())
+        response=self.client.get('/booking-prefill/data/?start=2026-12-24',HTTP_ORIGIN=self.origin)
+        self.assertEqual(response.status_code,200)
+        self.assertTrue(next(p for p in response.json()['tourists'] if p['id']==person.pk)['issues'])
+
+    def test_new_trip_date_determines_age_without_modifying_old_contract(self):
+        self.choose()
+        response=self.client.get('/booking-prefill/data/?start=2027-12-24',HTTP_ORIGIN=self.origin)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual([p['age'] for p in response.json()['tourists']],[47,37,10,2])
+        self.contract.refresh_from_db();self.assertEqual(self.contract.start,date(2026,12,24))
+        self.assertEqual(self.client.get('/booking-prefill/data/',HTTP_ORIGIN=self.origin).status_code,422)
+
+    def test_prepare_button_returns_directly_to_source_contract(self):
+        self.assertRedirects(self.choose(),f'/contracts/{self.contract.pk}/')
+        response=self.client.get(f'/contracts/{self.contract.pk}/')
+        self.assertContains(response,'Данные в Турвизор')

@@ -12,9 +12,10 @@ async function setup({allowed=true,origin='https://aborigen-tour.ru',existing=fa
  const person=header=>`<section class="TVTourBuyTouristItemControl"><header class="TVTourBuyTouristItemHeader">${header}</header><div class="TVTouristGenderBlock"><div class="TVInputRadio"><input type="radio" name="gender-${personIndex}" checked>Муж</div><div class="TVInputRadio"><input type="radio" name="gender-${personIndex++}">Жен</div></div><div class="TVTouristNationality"><input value="Россия" readonly></div>${touristClasses.map(field).join('')}</section>`;
  const dom=new JSDOM(`<div class="tv-moduleid-898"></div><input id="unrelated" value="UNCHANGED"><input type="checkbox" id="consent">${headers.map(person).join('')}${customerClasses.map(field).join('')}`,{url:origin+'/book/offers_tourv.php#tvtourid=123',runScripts:'outside-only'});
  const w=dom.window,d=w.document;let copied='';const requests=[],model=new Map();
+ w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  Object.defineProperty(w.HTMLElement.prototype,'getClientRects',{value(){return this.hidden?[]:[{width:100,height:25}]}});
  Object.defineProperty(d,'readyState',{value:'complete'});
- const script=d.createElement('script');script.src='https://crm.aborigen-tour.ru/static/crm/booking_prefill.js?v=5';d.body.append(script);
+ const script=d.createElement('script');script.src='https://crm.aborigen-tour.ru/static/crm/booking_prefill.js?v=6';d.body.append(script);
  Object.defineProperty(d,'currentScript',{value:script});
  const vendor=d.createElement('script');vendor.src='https://tourvisor.ru/module/init.js?authkey=SECRET';d.body.append(vendor);
  if(existing)d.querySelector('.TVTouristSurname input').value='REAL EXISTING DATA';
@@ -26,6 +27,7 @@ async function setup({allowed=true,origin='https://aborigen-tour.ru',existing=fa
  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async text=>copied=text}});
  w.HTMLFormElement.prototype.submit=()=>{throw Error('Must not submit')};const nativeClick=w.HTMLElement.prototype.click;w.HTMLElement.prototype.click=function(){if(this.tagName!=='INPUT'||this.type!=='radio')throw Error('Must not click booking controls');return nativeClick.call(this)};
  w.eval(source);await new Promise(resolve=>setImmediate(resolve));
+ const dateField=d.querySelector('aside input[type=date]');if(dateField)dateField.value='2026-12-24';
  const panel=d.querySelector('aside'),buttons=panel?[...panel.querySelectorAll('button')]:[];
  return {w,d,panel,buttons,requests,model,getCopied:()=>copied};
 }
@@ -47,10 +49,35 @@ test('exact one-year slot is matched before a flexible under-2 slot',async()=>{
  const page=await setup({tourists:[traveler(1,0,'2026-02-01','INFANT'),traveler(2,1,'2025-01-01','ONEYEAR')],headers:['Ребенок 1 (до 2 лет)','Ребенок 2 (1 год)']});await page.buttons[0].onclick();
  assert.deepEqual([...page.d.querySelectorAll('.TVTouristSurname input')].map(n=>n.value),['INFANT','ONEYEAR']);
 });
-test('age mismatch or cancelled confirmation produces no changes',async()=>{
- const mismatch=await setup({headers:['Взрослый турист','Ребенок 1 (6 лет)']});await mismatch.buttons[0].onclick();assert.equal(mismatch.model.size,0);
- const cancelled=await setup({confirm:false});await cancelled.buttons[0].onclick();assert.equal(cancelled.model.size,0);
+test('unmatched child slots remain blank while suitable adults are filled',async()=>{
+ const page=await setup({tourists:[example.tourists[0],traveler(3,9,'2017-01-01','CHILDNINE')],headers:['Взрослый турист','Ребенок 1 (6 лет)']});await page.buttons[0].onclick();
+ const names=page.d.querySelectorAll('.TVTouristSurname input');assert.equal(names[0].value,'TESTOV');assert.equal(names[1].value,'');
 });
 test('real values already entered are never overwritten',async()=>{
  const page=await setup({existing:true});await page.buttons[0].onclick();assert.equal(page.model.size,0);
+});
+
+test('surplus adults prompt selection and cancellation writes nothing',async()=>{
+ const page=await setup({tourists:[...example.tourists,traveler(3,30,'1996-01-01','EXTRA')]});
+ const pending=page.buttons[0].onclick();await new Promise(resolve=>setImmediate(resolve));
+ const dialog=page.d.querySelector('dialog');assert.ok(dialog);
+ dialog.querySelectorAll('button')[1].onclick();await pending;assert.equal(page.model.size,0);
+});
+test('surplus adult can be chosen explicitly instead of the oldest',async()=>{
+ const page=await setup({tourists:[...example.tourists,traveler(3,30,'1996-01-01','EXTRA')]});
+ const pending=page.buttons[0].onclick();await new Promise(resolve=>setImmediate(resolve));
+ const dialog=page.d.querySelector('dialog'),selects=dialog.querySelectorAll('select');selects[0].value='3';selects[1].value='3';dialog.querySelector('button').onclick();assert.equal(page.model.size,0);assert.ok(dialog.open);selects[1].value='2';dialog.querySelector('button').onclick();await pending;
+ assert.deepEqual([...page.d.querySelectorAll('.TVTouristSurname input')].map(n=>n.value),['EXTRA','PROBNY']);
+});
+test('missing tourists leave extra adult and child fields blank',async()=>{
+ const page=await setup({tourists:[example.tourists[0]],headers:['Взрослый турист 1','Взрослый турист 2','Ребенок 1 (6 лет)']});await page.buttons[0].onclick();
+ assert.deepEqual([...page.d.querySelectorAll('.TVTouristSurname input')].map(n=>n.value),['TESTOV','','']);
+ assert.equal(page.d.querySelector('.TVCustomerContactsName input').value,'TEST CUSTOMER');
+});
+
+test('extra children of the same age can be selected by name',async()=>{
+ const page=await setup({tourists:[example.tourists[0],traveler(3,6,'2020-01-01','CHILDA'),traveler(4,6,'2020-06-01','CHILDB')],headers:['Взрослый турист','Ребенок 1 (6 лет)']});
+ const pending=page.buttons[0].onclick();await new Promise(resolve=>setImmediate(resolve));
+ const dialog=page.d.querySelector('dialog');dialog.querySelectorAll('select')[1].value='4';dialog.querySelector('button').onclick();await pending;
+ assert.deepEqual([...page.d.querySelectorAll('.TVTouristSurname input')].map(n=>n.value),['TESTOV','CHILDB']);
 });
