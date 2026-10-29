@@ -206,9 +206,9 @@ class TouristAdmin(AuditedAdmin):
     search_fields=['name']
 @admin.register(Operator)
 class OperatorAdmin(AuditedAdmin):
-    list_editable=['sort_order','is_default']
-    search_fields=['name']
-    list_display=['name','booking_url_template','sort_order','is_default']
+    list_editable=['inn','sort_order','is_default']
+    search_fields=['name','inn']
+    list_display=['name','inn','booking_url_template','sort_order','is_default']
 
 @admin.register(ContractType,PaymentMethod,Meal,Transfer,Insurance,FuelSurcharge)
 class ReferenceAdmin(AuditedAdmin):

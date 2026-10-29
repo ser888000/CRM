@@ -81,40 +81,40 @@
     Возврат "";
 КонецФункции
 
-// Соответствия хранятся в настройках 1С для пользователя и этой базы.
-Функция crmOperatorMapping(crmOperatorID,crmOperatorName)
-    crmKey="AborigenCRM_TO_V1_"+НРег(КаталогИБ())+"_"+crmOperatorID;
-    crmStored="";
-    Попытка
-        crmStored=ВосстановитьЗначение(crmKey);
-        Если ТипЗначения(crmStored)=11 Тогда
-            crmMapped=СоздатьОбъект("Справочник.Контрагенты");
-            crmMapped.НайтиЭлемент(crmStored);
-            Если (crmMapped.Выбран()=1) И (crmMapped.ЭтоГруппа()=0) И (crmMapped.ПометкаУдаления()=0) Тогда
+// ИНН приходит из CRM. Сохранённые соответствия прежних версий не читаются.
+Функция crmNormalizeINN(crmText)
+    crmValue=СтрЗаменить(СокрЛП(Строка(crmText))," ","");
+    Для crmIndex=1 По СтрДлина(crmValue) Цикл
+        Если Найти("0123456789",Сред(crmValue,crmIndex,1))=0 Тогда Возврат ""; КонецЕсли;
+    КонецЦикла;
+    Если (СтрДлина(crmValue)<>10) И (СтрДлина(crmValue)<>12) Тогда Возврат ""; КонецЕсли;
+    Возврат crmValue;
+КонецФункции
 
-                Возврат crmStored;
+Функция crmOperatorByINN(crmINN,crmOperatorName)
+    crmTaxID=crmNormalizeINN(crmINN);
+    Если ПустаяСтрока(crmTaxID)=1 Тогда
+        Предупреждение("ТО "+crmOperatorName+": ИНН отсутствует или некорректен. Добавьте ИНН в справочнике Туроператоры в CRM и сформируйте выгрузку заново. Загрузка остановлена.");
+        Возврат -1;
+    КонецЕсли;
+    crmMapped=СоздатьОбъект("Справочник.Контрагенты");
+    crmMapped.ВыбратьЭлементы(); crmCount=0; crmFound="";
+    Пока crmMapped.ПолучитьЭлемент()=1 Цикл
+        Если (crmMapped.ЭтоГруппа()=0) И (crmMapped.ПометкаУдаления()=0) Тогда
+            Если crmNormalizeINN(crmMapped.ИНН)=crmTaxID Тогда
+                crmFound=crmMapped.ТекущийЭлемент(); crmCount=crmCount+1;
             КонецЕсли;
         КонецЕсли;
-    Исключение
-        // Отсутствующая или устаревшая ссылка требует нового выбора.
-        crmStored="";
-    КонецПопытки;
-    crmMapped=СоздатьОбъект("Справочник.Контрагенты");
-    Если crmMapped.Выбрать("ТО CRM: "+crmOperatorName+" — выберите ЮЛ в 1С",)=0 Тогда Возврат -1; КонецЕсли;
-    Если (crmMapped.ЭтоГруппа()=1) Или (crmMapped.ПометкаУдаления()=1) Тогда
-        Предупреждение("Выберите действующего контрагента, а не группу."); Возврат -1;
+    КонецЦикла;
+    Если crmCount=0 Тогда
+        Предупреждение("ТО "+crmOperatorName+", ИНН "+crmTaxID+": контрагент в 1С не найден. Добавьте его через Справочники — Контрагенты, заполните ИНН и повторите загрузку. Загрузка остановлена.");
+        Возврат -1;
     КонецЕсли;
-    crmSelected=crmMapped.ТекущийЭлемент();
-    СохранитьЗначение(crmKey,crmSelected);
-    crmStored=ВосстановитьЗначение(crmKey);
-    Если ТипЗначения(crmStored)<>11 Тогда
-        Предупреждение("Не удалось сохранить соответствие ТО в настройках 1С."); Возврат -1;
+    Если crmCount>1 Тогда
+        Предупреждение("ТО "+crmOperatorName+", ИНН "+crmTaxID+": в 1С несколько контрагентов с этим ИНН. Устраните дубли в справочнике Контрагенты и повторите загрузку. Загрузка остановлена.");
+        Возврат -1;
     КонецЕсли;
-    Если crmStored<>crmSelected Тогда
-        Предупреждение("Не прошла проверка сохранённого соответствия ТО."); Возврат -1;
-    КонецЕсли;
-
-    Возврат crmSelected;
+    Возврат crmFound;
 КонецФункции
 
 Функция crmFixedTour()
@@ -291,7 +291,7 @@
     crmCustomer=""; crmCustomerAgreement="";
     Если crmReturnParties(crmNode,crmCustomer,crmCustomerAgreement)=0 Тогда Возврат; КонецЕсли;
     crmOperatorNode=crmNode.ВыбратьУзел("OPERATOR");
-    crmOperator=crmOperatorMapping(crmOperatorNode.ПолучитьАтрибут("ID"),crmOperatorNode.ПолучитьАтрибут("NAME"));
+    crmOperator=crmOperatorByINN(crmOperatorNode.ПолучитьАтрибут("INN"),crmOperatorNode.ПолучитьАтрибут("NAME"));
     Если crmError(crmOperator)=1 Тогда Возврат; КонецЕсли;
     crmOperatorAgreement=crmMainAgreement(crmOperator); Если crmError(crmOperatorAgreement)=1 Тогда Возврат; КонецЕсли;
     crmService=crmStornoService(); Если crmError(crmService)=1 Тогда Возврат; КонецЕсли;
@@ -448,10 +448,10 @@
     crmStage="Тур с кодом 319";
     crmTour=crmFixedTour();
     Если crmError(crmTour)=1 Тогда Возврат; КонецЕсли;
-    crmStage="Соответствие ТО";
-    crmOperator=crmOperatorMapping(crmOperatorID,crmOperatorName);
+    crmStage="Поиск контрагента ТО по ИНН";
+    crmOperator=crmOperatorByINN(crmOperatorNode.ПолучитьАтрибут("INN"),crmOperatorName);
     Если crmError(crmOperator)=1 Тогда Возврат; КонецЕсли;
-    // ТО определяется соответствием CRM, не реквизитами служебного тура 319.
+    // ТО определяется по ИНН из CRM, не реквизитами служебного тура 319.
     crmStage="Строка заказчика";
     crmTourist=crmReference("Туристы",crmCustomerName,0);
     Если crmError(crmTourist)=1 Тогда Возврат; КонецЕсли;

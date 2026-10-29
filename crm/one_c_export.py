@@ -115,7 +115,7 @@ def build_plan(contract_ids, year, *, max_contracts=20):
         customer = {'id': str(contract.customer.exchange_id), 'name': contract.customer.name}
         seen_names[normalized_name(customer['name'])].add(customer['id'])
         record = {'kind': 'zero' if contract.amount == 0 and contract.cost == 0 else 'storno' if contract.amount < 0 and contract.cost < 0 and contract.profit < 0 else 'sale', 'id': key, 'number': contract.number, 'date': contract.date.isoformat(),
-                  'customer': customer, 'operator': {'id': str(contract.operator.exchange_id), 'name': contract.operator.name},
+                  'customer': customer, 'operator': {'id': str(contract.operator.exchange_id), 'name': contract.operator.name, 'inn': contract.operator.inn},
                   'amount': money(contract.amount), 'cost': money(contract.cost),
                   'commission': money(contract.profit), 'currency': 'RUB',
                   'voucher_date': date(year, 12, 31).isoformat(), 'shipment_date': None,
@@ -219,7 +219,7 @@ def xml_bytes(plan):
                              VOUCHER_DATE=c['voucher_date'], SHIPMENT_DATE=c['shipment_date'] or '',
                              SHIPMENT_STATUS=c['shipment_status'])
         ET.SubElement(node, 'CUSTOMER', ID=c['customer']['id'], NAME=c['customer']['name'])
-        ET.SubElement(node, 'OPERATOR', ID=c['operator']['id'], NAME=c['operator']['name'])
+        ET.SubElement(node, 'OPERATOR', ID=c['operator']['id'], NAME=c['operator']['name'], INN=c['operator'].get('inn', ''))
         ET.SubElement(node, 'ROW', CUSTOMER=c['customer']['id'], AMOUNT=c['amount'], COST=c['cost'])
         for payment in c['payments']:
             ET.SubElement(node, 'PAYMENT', ID=payment['id'], DATE=payment['date'],

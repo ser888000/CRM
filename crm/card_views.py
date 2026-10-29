@@ -142,7 +142,7 @@ def contract_card(request,pk=None):
     if pk:
         payments=list(contract.payments.select_related('method','legacy_payer').order_by('-date','-pk')) if request.user.has_perm('crm.view_payment') else []
         for p in payments:p.edit_form=invalid_form if invalid_action=='payment' and invalid_id==str(p.pk) else CardPaymentForm(instance=p,prefix=f'payment-{p.pk}')
-        task_query=Task.objects.filter(Q(contract=contract)|Q(contract__isnull=True,customer=contract.customer)).select_related('employee','task_type').order_by('done','-due','pk')
+        task_query=Task.objects.filter(Q(contract=contract)|Q(contract__isnull=True,customer=contract.customer)).select_related('employee','task_type').order_by('done','due','pk')
         task_count=task_query.count() if request.user.has_perm('crm.view_task') else 0
         tasks=list(task_query[:100]) if request.user.has_perm('crm.view_task') else []
         for t in tasks:t.edit_form=invalid_form if invalid_action=='task' and invalid_id==str(t.pk) else TaskCardForm(instance=t,prefix=f'task-{t.pk}')

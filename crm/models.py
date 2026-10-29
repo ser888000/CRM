@@ -4,7 +4,7 @@ from urllib.parse import quote, urlsplit
 from string import Formatter
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models, transaction
 from django.db.models import Sum
 from django.db.models.functions import Lower
@@ -118,6 +118,7 @@ class FuelSurcharge(NamedReference):
         verbose_name='Топливный сбор'; verbose_name_plural='Топливные сборы'
 
 class Operator(DefaultReference):
+    inn=models.CharField('ИНН',max_length=12,blank=True,validators=[RegexValidator(r'^(?:[0-9]{10}|[0-9]{12})$', 'Укажите ИНН из 10 или 12 цифр.')],help_text='ИНН юридического лица ТО для поиска контрагента в 1С.')
     sort_order=models.IntegerField('Порядок сортировки',default=0)
     exchange_id=models.UUIDField(default=uuid.uuid4,unique=True,editable=False)
     name = models.CharField('Название',max_length=200,unique=True)

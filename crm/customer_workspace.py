@@ -131,7 +131,7 @@ def editor(request,pk=None):
         result=[]
         for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
             if number:
-                query=request.GET.copy();query[key]=number
+                query=request.GET.copy();query[key]=number;query['tab']='tasks' if key=='task_page' else 'finance'
                 result.append({'label':label,'url':'?'+query.urlencode()+'#'+anchor})
         return result
     return render(request,'crm/customer_editor.html',{'form':form,'customer':customer,'is_new':not pk,'editable':editable,'back_url':back_url(query),'return_query':safe_query(query),'visible_fields':[f for f in form if not f.is_hidden],'contracts':contracts[:100],'contract_count':contracts.count(),'similar':similar[:10],'customer_tasks':task_page,'customer_payments':finance_page,'customer_payment_totals':totals,'task_links':page_links(task_page,'task_page','customer-tasks'),'finance_links':page_links(finance_page,'finance_page','customer-finances')})

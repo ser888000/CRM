@@ -23,6 +23,19 @@ class UnifiedCompositionTests(unittest.TestCase):
             self.assertIn(literal, source)
         source.encode('cp1251')
 
+    def test_operator_tax_id_preflight_precedes_all_writes_and_ignores_old_mappings(self):
+        source=unified_source(Path(__file__).resolve().parents[1]/'integrations'/'1c77')
+        self.assertNotIn('AborigenCRM_TO_V1_',source)
+        self.assertNotIn('crmOperatorMapping',source)
+        lookup=source.split('Функция a_crmOperatorByINN(',1)[1].split('КонецФункции',1)[0]
+        self.assertIn('crmMapped.ИНН',lookup)
+        self.assertIn('crmCount>1',lookup)
+        self.assertIn('crmCount=0',lookup)
+        self.assertNotIn('.Выбрать(',lookup)
+        self.assertNotIn('СохранитьЗначение',lookup)
+        whole=source.split('Процедура crmWholePackage()',1)[1].split('КонецПроцедуры',1)[0]
+        self.assertLess(whole.index('a_crmOperatorByINN('),whole.index('crmBatchApplications('))
+
     def test_1c77_local_procedures_are_defined_before_their_calls(self):
         directory = Path(__file__).resolve().parents[1] / 'integrations' / '1c77'
         source = unified_source(directory)
