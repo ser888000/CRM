@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Root-owned, fixed-purpose systemd worker. No commands/paths come from HTTP."""
+import sys
 import fcntl
 import json
 import os
@@ -18,6 +19,11 @@ from datetime import datetime,timezone
 from pathlib import Path
 
 REPO=Path('/opt/aborigen-crm')
+try:
+    from crm_backup_retention import prune_backups, ROOT_PATTERN
+except ModuleNotFoundError:
+    sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
+    from crm.backup_retention import prune_backups, ROOT_PATTERN
 REQUEST=Path('/var/lib/aborigen-crm/update-request.json')
 STATE=Path('/var/lib/aborigen-crm-updater')
 DB=Path('/var/lib/aborigen-crm/db.sqlite3')
@@ -77,8 +83,14 @@ def validate_database():
 
 
 def backup_database(dest):
-    with sqlite3.connect(f'file:{DB}?mode=ro',uri=True) as source,sqlite3.connect(dest) as backup:source.backup(backup)
-    dest.chmod(0o600)
+    prune_backups(dest.parent,ROOT_PATTERN)
+    pending=dest.with_suffix('.pending')
+    try:
+        with sqlite3.connect(f'file:{DB}?mode=ro',uri=True) as source,sqlite3.connect(pending) as backup:
+            source.backup(backup)
+            if backup.execute('PRAGMA quick_check').fetchall()!=[('ok',)]:raise RuntimeError('Резервная копия не прошла проверку.')
+        pending.chmod(0o600);pending.replace(dest)
+    finally:pending.unlink(missing_ok=True)
 
 
 def restore_database(source):
@@ -140,6 +152,7 @@ def main():
                     backup_database(candidate);backup=candidate;data['backup']=backup.name;publish(data)
                     run(['git','merge','--ff-only',target],log,60)
                     run(['python3','/usr/local/libexec/aborigen-crm-code-permissions.py'],log,60)
+                    os.environ['CRM_UPDATE_BACKUP']=str(backup)
                     run(['bash','deploy/install-service.sh'],log,1200)
                     healthy();data.update(state='success',message='Обновление установлено. CRM работает.')
             except Exception as exc:
@@ -163,5 +176,6 @@ def main():
                 data['finished']=stamp();publish(data)
                 if not data.get('recovery_failed'):(STATE/'maintenance').unlink(missing_ok=True)
                 REQUEST.unlink(missing_ok=True)
+                os.environ.pop('CRM_UPDATE_BACKUP',None)
 
 if __name__=='__main__':main()

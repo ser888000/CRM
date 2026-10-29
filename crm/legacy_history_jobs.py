@@ -1,4 +1,5 @@
 """App-user background import; fixed command, private files, SQLite backup, no shell."""
+import re
 import fcntl
 import json
 import os
@@ -7,6 +8,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from .backup_retention import prune_backups
 from django.conf import settings
 from django.utils import timezone
 
@@ -90,6 +92,7 @@ def start_job(upload,actor,replace=False,clear_only=False):
 
 def backup_database(job):
     db=Path(settings.DATABASES['default']['NAME'])
+    prune_backups(job.parent,re.compile(r'before\.sqlite3'),glob_pattern='*/before.sqlite3')
     backup=job/'before.sqlite3'
     fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.close(fd)
     with sqlite3.connect('file:'+str(db)+'?mode=ro',uri=True) as src,sqlite3.connect(backup) as dest:

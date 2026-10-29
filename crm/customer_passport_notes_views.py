@@ -1,4 +1,5 @@
 """Admin-only, explicit execution with a verified SQLite backup before writes."""
+import fcntl
 import os
 import sqlite3
 import uuid
@@ -11,6 +12,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_GET
+from .backup_retention import prune_backups, PASSPORT_PATTERN
 from .customer_passport_notes import plan
 from .models import Customer, AuditEvent
 from .update_views import require_admin
@@ -51,18 +53,27 @@ def backup():
         raise BackupError('Для этой базы требуется отдельный способ резервного копирования. Изменений нет.')
     folder = backup_folder()
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (folder / 'backup.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        prune_backups(folder, PASSPORT_PATTERN)
+        return create_backup(folder)
+
+
+def create_backup(folder):
     path = folder / (uuid.uuid4().hex + '.sqlite3')
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    pending = path.with_suffix('.pending')
+    fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     os.close(fd)
     database = Path(settings.DATABASES['default']['NAME']).resolve()
     try:
-        with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as source, sqlite3.connect(path) as target:
+        with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as source, sqlite3.connect(pending) as target:
             source.backup(target)
             if target.execute('PRAGMA quick_check').fetchone() != ('ok',):
                 raise BackupError('Резервная копия не прошла проверку. Изменений нет.')
     except Exception:
-        path.unlink(missing_ok=True)
+        pending.unlink(missing_ok=True)
         raise
+    pending.replace(path)
     return path
 
 
