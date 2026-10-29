@@ -9,6 +9,9 @@
  if(endpoint.origin!=='https://crm.aborigen-tour.ru')return;
  window.__aborigenBookingPrefill=true;
  let saved=null,panel,button,status,reset,startDate,sourceLabel,dateLabel;
+ function hide(node,value,display='inline-block'){
+  node.hidden=value;node.style.setProperty('display',value?'none':display,'important');
+ }
  async function authorize(){
   const response=await fetch(endpoint,{credentials:'include',cache:'no-store',redirect:'error'});
   if(!response.ok)return null;
@@ -76,7 +79,7 @@
     try{if(inputFor(binding)===binding.node&&genderOf(binding.node)===binding.value)setInput(binding,binding.before)}catch{}
    }
    if(!people.length)throw Error('Откройте форму бронирования, чтобы убрать подставленные данные.');
-   saved=null;reset.hidden=true;status.textContent='Подставленные данные убраны. Ручные изменения сохранены.';
+   saved=null;hide(reset,true);status.textContent='Подставленные данные убраны. Ручные изменения сохранены.';
   }catch(error){status.textContent=error.message;}
  }
  function readTourDate(){
@@ -97,7 +100,7 @@
  function updateTourDate(){
   if(!startDate)return;
   const date=readTourDate();
-  if(date){dateLabel.hidden=true;startDate.value=date;startDate.readOnly=true;startDate.title='Дата выбранного тура из Турвизора';}
+  if(date){hide(dateLabel,true);startDate.value=date;startDate.readOnly=true;startDate.title='Дата выбранного тура из Турвизора';}
   else{if(startDate.readOnly)startDate.value='';startDate.readOnly=false;startDate.title='Если дата тура не распознана, укажите её вручную';}
  }
  function normalizeCountry(value){
@@ -153,7 +156,7 @@
    const auth=await authorize();if(!auth){panel.remove();return;}
    sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Сначала нажмите «Данные в Турвизор» в нужном договоре CRM.';
    updateTourDate();
-   if(!startDate.value){dateLabel.hidden=false;throw Error('Не удалось прочитать дату тура. Укажите начало поездки вручную.');}
+   if(!startDate.value){hide(dateLabel,false,'block');throw Error('Не удалось прочитать дату тура. Укажите начало поездки вручную.');}
    const dataUrl=new URL('/booking-prefill/data/',endpoint);dataUrl.searchParams.set('start',startDate.value);
    const response=await fetch(dataUrl,{credentials:'include',cache:'no-store',redirect:'error'});
    const data=await response.json();
@@ -191,11 +194,11 @@
    saved={hash:location.hash,bindings};
    try{
     for(const binding of bindings){setInput(binding,binding.value);binding.written=binding.kind==='gender'?binding.value:inputFor(binding).value;}
-    reset.hidden=false;const empty=assigned.map((person,index)=>person?null:plan.slots[index].header).filter(Boolean);
+    hide(reset,false);const empty=assigned.map((person,index)=>person?null:plan.slots[index].header).filter(Boolean);
     const unused=data.tourists.filter(person=>!assigned.some(item=>item?.id===person.id));
     const issues=unused.flatMap(person=>person.issues||[]);
     status.textContent='Заполнено из договора '+data.contract.number+'.'+(empty.length?' Введите вручную: '+empty.join(', ')+'.':'')+(unused.length?' Не перенесено из старого состава: '+unused.length+'.':'')+' Проверьте поля перед бронированием.'+(warnings.length?' '+warnings.join('; '):'')+(issues.length?' '+issues.join('; '):'');
-   }catch(error){reset.hidden=false;restore();throw error;}
+   }catch(error){hide(reset,false);restore();throw error;}
   }catch(error){status.textContent=error.message||'Не удалось заполнить форму.';}
   finally{button.disabled=false;}
  }
@@ -206,16 +209,16 @@
   const title=document.createElement('strong');title.textContent='CRM · заполнение из договора';
   button=document.createElement('button');button.type='button';button.textContent='Заполнить из договора';button.onclick=fill;
   status=document.createElement('p');status.setAttribute('role','status');status.textContent='Откройте форму тура. Недостающих туристов можно ввести вручную.';
-  reset=document.createElement('button');reset.type='button';reset.textContent='Убрать подставленные данные';reset.hidden=true;
+  reset=document.createElement('button');reset.type='button';reset.textContent='Убрать подставленные данные';hide(reset,true);
   reset.onclick=restore;
   sourceLabel=document.createElement('p');sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Нажмите «Данные в Турвизор» в исходном договоре CRM.';
-  dateLabel=document.createElement('label');dateLabel.textContent='Начало новой поездки';dateLabel.hidden=true;startDate=document.createElement('input');startDate.type='date';dateLabel.append(startDate);
+  dateLabel=document.createElement('label');dateLabel.textContent='Начало новой поездки';hide(dateLabel,true);startDate=document.createElement('input');startDate.type='date';dateLabel.append(startDate);
   const close=document.createElement('button');close.type='button';close.textContent='×';close.setAttribute('aria-label','Свернуть помощник CRM');
   Object.assign(close.style,{float:'right',marginLeft:'12px',cursor:'pointer'});
   const launcher=document.createElement('button');launcher.type='button';launcher.textContent='CRM';launcher.setAttribute('aria-label','Открыть помощник CRM');
   Object.assign(launcher.style,{position:'fixed',left:'16px',bottom:'16px',zIndex:'2147483000',padding:'8px 12px',border:'1px solid #183f35',borderRadius:'8px',background:'#fffbe9',color:'#183f35',cursor:'pointer'});
   function collapse(value){
-   panel.hidden=value;launcher.hidden=!value;
+   hide(panel,value,'block');hide(launcher,!value);
    try{sessionStorage.setItem('aborigen-crm-prefill-collapsed',value?'1':'0')}catch{}
   }
   close.onclick=()=>collapse(true);launcher.onclick=()=>collapse(false);

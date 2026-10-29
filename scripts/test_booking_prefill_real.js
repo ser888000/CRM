@@ -121,3 +121,17 @@ test('manual date appears only when automatic date and manual value are missing'
  await page.buttons[0].onclick();assert.equal(page.panel.querySelector('label').hidden,false);
  assert.equal(page.model.size,0);
 });
+
+
+test('collapse overrides site CSS displaying hidden aside and buttons',async()=>{
+ const page=await setup();const css=page.d.createElement('style');
+ css.textContent='aside { display:block !important } button { display:inline-block !important } label { display:block !important }';page.d.head.append(css);
+ page.buttons[2].onclick();
+ assert.equal(page.w.getComputedStyle(page.panel).display,'none');
+ assert.equal(page.panel.style.getPropertyPriority('display'),'important');
+ const launcher=page.d.querySelector('button[aria-label="Открыть помощник CRM"]');
+ assert.equal(page.w.getComputedStyle(launcher).display,'inline-block');launcher.onclick();
+ assert.equal(page.w.getComputedStyle(page.panel).display,'block');
+ assert.equal(page.w.getComputedStyle(launcher).display,'none');
+ assert.equal(page.w.getComputedStyle(page.panel.querySelector('label')).display,'none');
+});
