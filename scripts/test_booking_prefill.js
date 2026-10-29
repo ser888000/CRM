@@ -3,17 +3,18 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');const vm=require('node:vm');
 const source=fs.readFileSync('crm/static/crm/booking_prefill_demo.js','utf8');
 async function setup({allowed=true,origin='https://aborigen-tour.ru',existing=false,lateExports=false}={}){
- const panels=[],requests=[];let refreshes=0;
+ const panels=[],requests=[];let refreshes=0,copied='';
  let tourists=[{Id:1,Age:0,DocumentType:5,NAME:existing?'REAL':'',SURNAME:''},{Id:2,Age:0,DocumentType:5,NAME:'',SURNAME:''}];
  let customer={DocumentType:1,Name:''};
  const before=JSON.stringify({tourists,customer});
  const catalog={getTouristsData:()=>tourists,getCustomerData:()=>customer,setTouristsData:value=>tourists=value,setCustomerData:value=>customer=value};
- function element(tag){return {tag,style:{},children:[],setAttribute(){},append(...items){this.children.push(...items)},remove(){this.removed=true}};}
+ function element(tag){return {tag,style:{},children:[],contains(){return false},setAttribute(){},append(...items){this.children.push(...items)},remove(){this.removed=true}};}
  const document={currentScript:{src:'https://crm.aborigen-tour.ru/static/crm/booking_prefill_demo.js'},readyState:'complete',querySelector:selector=>selector==='.tv-moduleid-898'?{}:null,createElement:element,body:{append:panel=>panels.push(panel)}};
- const context={document,location:{origin,pathname:'/book/offers_tourv.php',hash:'#tvtourid=123'},URL,Set,JSON,Boolean,Error,window:{TV:{orderCatalog:catalog,orderManager:{_TourId:123,_instance:{_tourBuyForm:{update(){refreshes++;}}}}}},fetch:async(url,options)=>{requests.push(options);return {ok:allowed,json:async()=>({enabled:true,test_only:true,customer:{Name:'TEST CUSTOMER'},tourists:[{NAME:'IVAN',SURNAME:'TESTOV'},{NAME:'PETR',SURNAME:'PROBNY'}]})}}};
+ document.scripts=[{src:'https://tourvisor.ru/module/init.js?authkey=SECRET'}];document.querySelectorAll=selector=>selector==='iframe'?[]:[{tagName:'INPUT',type:'text',name:'surname',id:'surname-field',className:'tourist-field',parentElement:null,getClientRects:()=>[{}],getAttribute:()=> 'Фамилия',get value(){throw Error('Never read personal values')}}];
+ const context={navigator:{clipboard:{writeText:async text=>copied=text}},document,location:{origin,pathname:'/book/offers_tourv.php',hash:'#tvtourid=123'},URL,Set,JSON,Boolean,Error,window:{TV:{orderCatalog:catalog,orderManager:{_TourId:123,_instance:{_tourBuyForm:{update(){refreshes++;}}}}}},fetch:async(url,options)=>{requests.push(options);return {ok:allowed,json:async()=>({enabled:true,test_only:true,customer:{Name:'TEST CUSTOMER'},tourists:[{NAME:'IVAN',SURNAME:'TESTOV'},{NAME:'PETR',SURNAME:'PROBNY'}]})}}};
  if(lateExports){const runtime=context.window.TV;context.window.TV={};context.window.initTv=()=>context.window.TV=runtime;}
  vm.runInNewContext(source,context);await new Promise(resolve=>setImmediate(resolve));
- return {panels,requests,context,before,getData:()=>JSON.stringify({tourists,customer}),getRefreshes:()=>refreshes};
+ return {panels,requests,context,before,getData:()=>JSON.stringify({tourists,customer}),getRefreshes:()=>refreshes,getCopied:()=>copied};
 }
 test('public visitor and foreign site never receive a button',async()=>{
  const publicPage=await setup({allowed:false});assert.equal(publicPage.panels.length,0);
@@ -35,4 +36,10 @@ test('restore does not clear a different tour',async()=>{
 
 test('late Tourvisor exports are refreshed before accessing catalog',async()=>{
  const page=await setup({lateExports:true});const fill=page.panels[0].children.find(node=>node.tag==='button');await fill.onclick();assert.match(page.getData(),/TESTOV/);assert.equal(page.getRefreshes(),1);
+});
+
+test('diagnostics copies field structure without values or URL secrets',async()=>{
+ const page=await setup();const buttons=page.panels[0].children.filter(node=>node.tag==='button');await buttons[2].onclick();
+ const output=page.getCopied();assert.match(output,/surname-field/);assert.match(output,/tourvisor.ru/);assert.doesNotMatch(output,/SECRET|authkey|TEST CUSTOMER/);
+ assert.equal(JSON.parse(output).probe_version,3);
 });

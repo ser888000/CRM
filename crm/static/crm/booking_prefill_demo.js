@@ -50,6 +50,15 @@
   }catch(error){status.textContent=error.message||'Не удалось выполнить тест.';}
   finally{button.disabled=false;}
  }
+ function diagnostics(){
+  const address=value=>{try{const url=new URL(value,location.href);return url.origin+url.pathname}catch{return 'unavailable'}};
+  const fields=[...document.querySelectorAll('input,select,textarea')].filter(node=>!panel?.contains(node)&&node.getClientRects().length&&node.type!=='hidden').slice(0,100).map(node=>{
+   const parents=[];let parent=node.parentElement;
+   for(let depth=0;parent&&depth<5;depth++,parent=parent.parentElement)parents.push({tag:parent.tagName,classes:String(parent.className||'').slice(0,240)});
+   return {tag:node.tagName,type:node.type||'',name:node.name||'',id:node.id||'',placeholder:node.getAttribute('placeholder')||'',classes:String(node.className||'').slice(0,240),parents};
+  });
+  return JSON.stringify({probe_version:3,page:address(location.href),runtime:{TV:typeof window.TV,initTv:typeof window.initTv,keys:Object.keys(window.TV||{}).sort().slice(0,160)},scripts:[...document.scripts].filter(node=>node.src).map(node=>address(node.src)),frames:[...document.querySelectorAll('iframe')].map(node=>address(node.src)),fields},null,2);
+ }
  function show(){
   if(!document.querySelector('.tv-moduleid-898'))return;
   panel=document.createElement('aside');panel.setAttribute('aria-label','Тест заполнения из CRM');
@@ -59,7 +68,13 @@
   status=document.createElement('p');status.setAttribute('role','status');status.textContent='Откройте пустую форму покупки на двух взрослых туристов.';
   reset=document.createElement('button');reset.type='button';reset.textContent='Убрать тестовые данные';reset.hidden=true;
   reset.onclick=()=>{if(!saved)return;if(saved.hash!==location.hash||saved.tourId!==window.TV?.orderManager?._TourId){status.textContent='Вы открыли другой тур. Восстановление старой формы отменено.';return;}saved.catalog.setTouristsData(saved.tourists);saved.catalog.setCustomerData(saved.customer);refresh();saved=null;reset.hidden=true;status.textContent='Исходные данные формы восстановлены.';};
-  panel.append(title,document.createElement('br'),button,status,reset);document.body.append(panel);
+  const diagnosticButton=document.createElement('button');diagnosticButton.type='button';diagnosticButton.textContent='Скопировать диагностику';
+  diagnosticButton.onclick=async()=>{
+   const text=diagnostics();
+   try{await navigator.clipboard.writeText(text);status.textContent='Диагностика скопирована. Пришлите её в чат. Значения полей в отчёт не включены.';}
+   catch{const output=document.createElement('textarea');output.readOnly=true;output.value=text;output.rows=8;output.style.width='100%';panel.append(output);output.select();status.textContent='Скопируйте этот отчёт и пришлите в чат.';}
+  };
+  panel.append(title,document.createElement('br'),button,status,reset,document.createElement('br'),diagnosticButton);document.body.append(panel);
  }
  async function init(){try{if(await authorize())show();}catch{/* Public visitors see no UI or technical errors. */}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
