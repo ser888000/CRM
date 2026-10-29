@@ -1,0 +1,14 @@
+{% extends 'crm/base.html' %}
+{% block content %}
+<a href="{% url 'admin:index' %}">← Справочники и управление</a>
+<h1>Паспортные данные из примечаний</h1>
+<p>Перед заполнением будет сохранена и проверена резервная копия базы. Заполняются только пустые поля заказчиков: дата рождения, серия и номер паспорта РФ, дата выдачи, кем выдан, код подразделения. Примечания сохраняются.</p>
+<p>Записи с несколькими паспортами, неполными данными или расхождениями с карточкой останутся для ручной проверки. Повторный запуск не перезаписывает заполненные поля.</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+{% if result %}
+<p role="status">Обновлено заказчиков: {{ result.changed }}. Заполнено полей: {{ result.fields }}. Без изменений: {{ result.unchanged }}. Для проверки: {{ result.review|length }}.</p>
+<p><a href="{% url 'customer_passport_notes_backup' result.backup %}">Скачать резервную копию базы до обработки</a></p>
+{% if result.review %}<h2>Проверить вручную</h2><ul>{% for item in result.review %}<li><a href="{% url 'customer_editor' item.pk %}" target="_blank" rel="noopener">{{ item.name }}</a>: {{ item.reason }}</li>{% endfor %}</ul>{% endif %}
+{% endif %}
+<form method="post">{% csrf_token %}<button>Сохранить копию БД и заполнить паспортные данные</button></form>
+{% endblock %}
