@@ -33,11 +33,56 @@ class ParserTests(SimpleTestCase):
         self.assertEqual(extract(NOTE.replace(' г.р.', ''))[0], extract(NOTE)[0])
 
     def test_ambiguous_invalid_incomplete(self):
-        for text in (NOTE + '\n' + NOTE, NOTE.replace('01.02.1985', '31.02.1985'), NOTE.replace('код подр. 000-001.', ''), NOTE.replace('17.07.2020', '17.07.1980')):
+        for text in (NOTE + '\n' + NOTE, NOTE.replace('01.02.1985', '31.02.1985'), NOTE.replace('17.07.2020', '17.07.1980')):
             with self.subTest(text=text):
                 fields, reason = extract(text)
                 self.assertFalse(fields)
                 self.assertTrue(reason)
+
+    def test_six_legacy_layouts(self):
+        examples = [
+            ('Тестов Иван Иванович 01.02.1985, паспорт 0000000001 выдан 17.07.2020 Отделением УФМС России по Тестовому округу в городе Тестовом, код подр. 000001', '000-001'),
+            ('Тестов Иван Иванович 01.02.1985 паспорт 0000 000001 выдан 17.07.2020 отделением ОУФМС России по Тестовой области 000-001', '000-001'),
+            ('Тестова Анна Ивановна 01.02.1985 0000 000001 УВД Тестового района РОВД 17.07.2020 17.07.2020', None),
+            ('Тестов Иван Иванович\n01.02.1985 г.р., паспорт 0000 000001, выдан 17.07.2020 Тестовым РОВД Тестового УВД код подр. 000001', '000-001'),
+            ('ТЕСТОВА АННА 01.02.1985, паспорт 0000000001 выдан 17.07.2020 УМВ РОССИИ ПО ТЕСТОВОЙ ОБЛАСТИ, код подр. 000-001', '000-001'),
+            ('Тестова Анна Ивановна 01.02.1985, паспорт 0000 00 0001 выдан 17.07.2020 Отделом УФМС России по Тестовому округу, код подр. 000-001', '000-001'),
+        ]
+        for text, code in examples:
+            with self.subTest(text=text):
+                fields, reason = extract(text)
+                self.assertFalse(reason)
+                self.assertEqual(fields['passport_number'], '0000000001')
+                self.assertEqual(fields['birthday'], date(1985, 2, 1))
+                self.assertEqual(fields['passport_issued'], date(2020, 7, 17))
+                self.assertEqual(fields.get('passport_code'), code)
+                self.assertNotIn('17.07.2020', fields['passport_issued_by'])
+
+    def test_missing_code_does_not_invent_or_clear_it(self):
+        customer = Customer(name='Тест', passport=NOTE.replace('код подр. 000-001.', ''), passport_code='123-456')
+        updates, reason = plan(customer)
+        self.assertFalse(reason)
+        self.assertNotIn('passport_code', updates)
+        self.assertEqual(updates['passport_number'], '0000000001')
+
+    def test_conflicting_issue_dates_and_malformed_numbers_are_rejected(self):
+        examples = [NOTE.replace('0000 000001', '00000000011'), NOTE.replace('0000 000001', '000000001'),
+                    NOTE.replace('17.07.2020', '17.07.2020 18.07.2020'),
+                    NOTE.replace('000-001', '000-01'), NOTE + ' ' + NOTE]
+        for text in examples:
+            with self.subTest(text=text):
+                fields, reason = extract(text)
+                self.assertFalse(fields)
+                self.assertTrue(reason)
+
+    def test_trailing_notes_and_equivalent_existing_code(self):
+        fields, reason = extract(NOTE + ' Дополнительная пометка от менеджера.')
+        self.assertFalse(reason)
+        self.assertEqual(fields, extract(NOTE)[0])
+        customer = Customer(name='Тест', passport=NOTE, passport_code='000001')
+        updates, reason = plan(customer)
+        self.assertFalse(reason)
+        self.assertNotIn('passport_code', updates)
 
     def test_existing_and_foreign_passports_are_preserved(self):
         customer = Customer(name='Тест', passport=NOTE, passport_number='9999999999')
