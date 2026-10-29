@@ -31,8 +31,9 @@
   button.disabled=true;
   try{
    const data=await authorize();if(!data){panel.remove();return;}
+   if(typeof window.initTv==='function')window.initTv();
    const catalog=window.TV?.orderCatalog;
-   if(!catalog||!['getTouristsData','getCustomerData','setTouristsData','setCustomerData'].every(key=>typeof catalog[key]==='function'))throw Error('Модуль ещё не готов. Откройте форму покупки тура и повторите.');
+   if(!catalog||!['getTouristsData','getCustomerData','setTouristsData','setCustomerData'].every(key=>typeof catalog[key]==='function'))throw Error('Форма открыта, но функции подстановки не доступны. Диагностика: initTv='+typeof window.initTv+'; TV='+typeof window.TV+'; orderCatalog='+typeof catalog+'; методы='+['getTouristsData','getCustomerData','setTouristsData','setCustomerData'].map(key=>key+':'+typeof catalog?.[key]).join(', '));
    const tourists=catalog.getTouristsData(),customer=catalog.getCustomerData();
    if(!Array.isArray(tourists)||tourists.length!==2||tourists.some(person=>person.Age!==0)||!customer||!Object.prototype.hasOwnProperty.call(customer,'DocumentType'))throw Error('Для теста откройте пустую форму на двух взрослых туристов.');
    const personalTourist=['NAME','SURNAME','BIRTHDAY','PASSPORTNUMBER','PASSPORTISSUE','PASSPORTEXPIRY','PASSPORTAUTHORITY'];
