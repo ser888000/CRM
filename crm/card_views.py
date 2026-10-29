@@ -40,7 +40,7 @@ def contract_card(request,pk=None):
     task_form=TaskCardForm(prefix='task-new')
     tourist_form=TouristCardForm(prefix='tourist-new')
     deadline=forms.Form(request.POST if action=='operator_due' else None,initial={'due':contract.operator_due})
-    deadline.fields['due']=forms.DateField(label='Срок оплаты ТО (общий для всех броней)',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    deadline.fields['due']=forms.DateField(label='До какого числа оплатить ТО',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
     active=request.GET.get('tab','overview')
     invalid_form=None;invalid_id=None;invalid_action=None
     if action=='contract':
@@ -61,14 +61,28 @@ def contract_card(request,pk=None):
         if not pk:raise PermissionDenied
         if action=='operator_due':
             require(request.user,'crm.change_contract')
-            active='bookings'
+            require(request.user,'crm.view_payment')
+            active='finance'
             if deadline.is_valid():
                 if request.POST.get('version')!=str(contract.updated_at):
                     deadline.add_error(None,'Договор изменился. Обновите страницу перед сохранением.')
                 else:
                     before=model_to_dict(contract);contract.operator_due=deadline.cleaned_data['due']
                     contract.save(update_fields=['operator_due','updated_at']);audit(request.user,contract,before,'operator_due_updated')
-                    return redirect('/contracts/'+str(pk)+'/?tab=bookings')
+                    return redirect('/contracts/'+str(pk)+'/?tab=finance')
+        elif action=='delete_booking':
+            require(request.user,'crm.delete_booking')
+            entry_id=request.POST.get('entry_id','')
+            if not entry_id.isdecimal() or len(entry_id)>18:raise Http404
+            booking=get_object_or_404(Booking,pk=entry_id,contract=contract)
+            if request.POST.get('version')!=str(contract.updated_at):
+                messages.error(request,'Договор изменился. Обновите страницу перед удалением брони.')
+            else:
+                before=model_to_dict(booking)
+                AuditEvent.objects.create(actor=request.user,object_type='crm.Booking',object_id=str(booking.pk),action='deleted',changes={'before':before})
+                booking.delete();contract.save(update_fields=['updated_at'])
+                messages.success(request,'Бронь удалена.')
+            return redirect('/contracts/'+str(pk)+'/?tab=bookings')
         elif action=='copy':
             require(request.user,'crm.add_contract','crm.add_contractline')
             cloned=copy_contract(contract);audit(request.user,cloned,{},'copied')
@@ -142,7 +156,7 @@ def contract_card(request,pk=None):
     if pk:
         payments=list(contract.payments.select_related('method','legacy_payer').order_by('-date','-pk')) if request.user.has_perm('crm.view_payment') else []
         for p in payments:p.edit_form=invalid_form if invalid_action=='payment' and invalid_id==str(p.pk) else CardPaymentForm(instance=p,prefix=f'payment-{p.pk}')
-        task_query=Task.objects.filter(Q(contract=contract)|Q(contract__isnull=True,customer=contract.customer)).select_related('employee','task_type').order_by('done','due','pk')
+        task_query=Task.objects.filter(Q(contract=contract)|Q(contract__isnull=True,customer=contract.customer)).select_related('employee','task_type').order_by('done','-due','pk')
         task_count=task_query.count() if request.user.has_perm('crm.view_task') else 0
         tasks=list(task_query[:100]) if request.user.has_perm('crm.view_task') else []
         for t in tasks:t.edit_form=invalid_form if invalid_action=='task' and invalid_id==str(t.pk) else TaskCardForm(instance=t,prefix=f'task-{t.pk}')

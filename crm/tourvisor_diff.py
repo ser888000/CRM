@@ -68,6 +68,7 @@ def compare_order(existing,normalized,customer=None):
     changes=[]
     for field,value in normalized['contract'].items():
         if field in ('number','date','tourvisor_time','hotel','region','room','meal'):continue
+        if field=='source_currency' and existing:continue
         if field=='end' and value is None and existing:continue
         add_change(changes,Contract._meta.get_field(field).verbose_name,getattr(existing,field) if existing else None,value,force=existing is None and value not in ('',None))
     add_change(changes,'Туроператор',existing.operator.name if existing else None,normalized['operator'])

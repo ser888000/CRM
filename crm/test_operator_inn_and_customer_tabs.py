@@ -43,9 +43,9 @@ class OperatorINNAndTabsTests(TestCase):
         self.assertIn('tab=tasks',response.context['task_links'][0]['url'])
         self.assertContains(response,'Похожих записей не найдено.')
 
-    def test_contract_tasks_planned_first_then_earliest_date(self):
+    def test_contract_tasks_planned_first_then_newest_date(self):
         late=Task.objects.create(contract=self.contract,title='Поздняя',due=date(2026,12,1))
         done=Task.objects.create(contract=self.contract,title='Выполненная',due=date(2026,1,1),done=True)
         early=Task.objects.create(contract=self.contract,title='Ранняя',due=date(2026,2,1))
         response=self.client.get(reverse('contract_card',args=[self.contract.pk]),{'tab':'tasks'})
-        self.assertEqual([t.pk for t in response.context['tasks']],[early.pk,late.pk,done.pk])
+        self.assertEqual([t.pk for t in response.context['tasks']],[late.pk,early.pk,done.pk])

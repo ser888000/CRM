@@ -39,7 +39,8 @@ class FollowupTests(TestCase):
         kind=TaskType.objects.create(name='Позвонить')
         task=Task.objects.create(title=kind.name,task_type=kind,customer=self.customer,contract=self.contract,due=date.today(),result='Согласовано')
         fields=[f.name for f in TaskEditorForm() if not f.is_hidden]
-        self.assertEqual(fields[:8],['task_type','due','employee','description','result','done','customer','contract'])
+        self.assertEqual(fields[:7],['task_type','due','employee','description','result','customer','contract'])
+        self.assertTrue(TaskEditorForm()['done'].is_hidden)
         self.assertEqual(list(TaskCardForm().fields),['task_type','due','done','description','result','employee'])
         values=self.client.get('/tasks/choices/customers/',{'q':'ивАН'}).json()['choices']
         self.assertIn('02.01.1980',values[0]['label']);self.assertIn('+79990000000',values[0]['label'])

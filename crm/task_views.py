@@ -177,6 +177,8 @@ class TaskEditorForm(forms.ModelForm):
     def __init__(self,*args,**kwargs):
         user=kwargs.pop('user',None)
         super().__init__(*args,**kwargs)
+        self.fields['done'].widget=forms.HiddenInput()
+        self.fields['done'].label='Статус'
         self.fields['task_type'].label='Задача'
         self.fields['task_type'].required=not (self.is_bound and self.data.get('title'))
         self.fields['title'].widget=forms.HiddenInput()
@@ -248,7 +250,7 @@ def editor(request,pk=None):
                 messages.success(request,f'Создано задач: {1+len(copies)}.' if not pk else 'Задача сохранена.')
                 return redirect(back_url(query))
             except (OverflowError,ValueError):form.add_error('due','Повторы выходят за допустимые даты. Уменьшите количество или измените срок.')
-    return render(request,'crm/task_editor.html',{'form':form,'task':task,'is_new':not pk,'back_url':back_url(query),'return_query':safe_query(query),'display_customer':task.customer or (task.contract.customer if task.contract_id else None),'task_field_groups':[[form[name] for name in names if name in form.fields] for names in [('task_type','due','employee'),('description','result','done'),('customer','contract'),('operator','booking_number'),('repeat','occurrences')] if any(name in form.fields for name in names)],'visible_fields':[field for field in form if not field.is_hidden]})
+    return render(request,'crm/task_editor.html',{'task_done':form.fields['done'].to_python(form['done'].value()),'form':form,'task':task,'is_new':not pk,'back_url':back_url(query),'return_query':safe_query(query),'display_customer':task.customer or (task.contract.customer if task.contract_id else None),'task_field_groups':[[form[name] for name in names if name in form.fields] for names in [('task_type','due','employee'),('description','result','done'),('customer','contract'),('operator','booking_number'),('repeat','occurrences')] if any(name in form.fields for name in names)],'visible_fields':[field for field in form if not field.is_hidden]})
 
 @login_required
 @permission_required(('crm.view_task','crm.change_task'),raise_exception=True)

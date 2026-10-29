@@ -10,7 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction,IntegrityError
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
-from .models import Contract,Customer,Operator,Tourist,ContractLine,AuditEvent,DepartureCity,Country,Task
+from .models import Contract,Customer,Operator,Tourist,ContractLine,AuditEvent,DepartureCity,Country,Task,ContractType,PaymentMethod,Currency
 from .services import create_tasks,flight_description
 
 GROUPS={'customer':'Заказчик','tour':'Параметры тура','tourists':'Туристы','hotel':'Проживание','transport':'Перелёты','service':'Услуги','amount':'Стоимость договора'}
@@ -122,7 +122,7 @@ def normalize_order(o):
         contract={
             'number':text(o.get('id')),'date':day(o.get('date'),True),'tourvisor_time':text(o.get('time')),
             'country':text(o.get('country')),'departure':text(o.get('departure')),'start':day(o.get('flydate')),
-            'tour_name':text(o.get('tour')),'source_currency':currency,
+            'tour_name':text(o.get('tour')),'source_currency':(Currency.objects.filter(is_default=True,is_hidden=False).values_list('code',flat=True).first() or currency),
             'nights':int(o['nights']) if o.get('nights') not in ('',None) else None,
             'adults':int(o.get('adult') or 0),'children':int(o.get('child') or 0),'infants':int(o.get('infant') or 0)}
         for name,model in [('country',Country),('departure',DepartureCity)]:
@@ -210,7 +210,9 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             if not customer:raise TourvisorError('Список похожих заказчиков изменился. Загрузите заявку повторно.')
             customer=Customer.objects.select_for_update().get(pk=customer.pk)
         operator=Operator.objects.get_or_create(name=n['operator'])[0]
-        contract=Contract.objects.create(customer=customer,operator=operator,tourvisor_id=source_id,**n['contract'])
+        contract=Contract.objects.create(customer=customer,operator=operator,tourvisor_id=source_id,
+            contract_type=ContractType.objects.filter(is_default=True,is_hidden=False).first(),
+            payment_method=PaymentMethod.objects.filter(is_default=True,is_hidden=False).first(),**n['contract'])
     if 'customer' in groups and (not new or update_customer):
         customer=Customer.objects.select_for_update().get(pk=contract.customer_id)
         before={key:getattr(customer,key) for key in n['customer']}
@@ -221,7 +223,7 @@ def apply_order(order,user,groups,templates=None,dates=None,expected=None,expect
             AuditEvent.objects.create(actor=user,object_type='crm.Customer',object_id=str(customer.pk),action='tourvisor_updated',changes={key:{'old':str(before[key]),'new':str(value)} for key,value in n['customer'].items() if before[key]!=value})
     if 'tour' in groups and not new:
         for k,v in n['contract'].items():
-            if k not in ('number','date','tourvisor_time','hotel','region','room','meal'):setattr(contract,k,v)
+            if k not in ('number','date','tourvisor_time','hotel','region','room','meal','source_currency'):setattr(contract,k,v)
         contract.operator=Operator.objects.get_or_create(name=n['operator'])[0]
     if 'hotel' in groups:
         for field in ('hotel','region','room','meal'):setattr(contract,field,n['contract'].get(field,''))

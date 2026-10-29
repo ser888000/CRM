@@ -46,7 +46,7 @@ class OperatorPaidTests(TestCase):
         self.assertEqual(response.status_code,302)
         self.contract.refresh_from_db();self.assertEqual(self.contract.operator_due,date(2026,11,1))
         page=self.client.get(f'/contracts/{self.contract.pk}/?tab=bookings')
-        self.assertContains(page,'Срок оплаты ТО (общий для всех броней)')
+        self.assertContains(page,'До какого числа оплатить ТО')
         self.assertEqual(Booking.objects.filter(contract=self.contract).count(),2)
         self.assertNotIn('operator_due',page.context['form'].fields)
         self.assertNotIn('operator_paid_in_full',page.context['form'].fields)
