@@ -81,3 +81,27 @@ test('extra children of the same age can be selected by name',async()=>{
  const dialog=page.d.querySelector('dialog');dialog.querySelectorAll('select')[1].value='4';dialog.querySelector('button').onclick();await pending;
  assert.deepEqual([...page.d.querySelectorAll('.TVTouristSurname input')].map(n=>n.value),['TESTOV','CHILDB']);
 });
+
+test('clear carried data after another tour renders, preserving manual edits and unrelated tourists',async()=>{
+ const page=await setup();await page.buttons[0].onclick();
+ for(const root of [...page.d.querySelectorAll('.TVTourBuyTouristItemControl')]){
+  const clone=root.cloneNode(true);root.querySelectorAll('input').forEach((input,index)=>clone.querySelectorAll('input')[index].value=input.value);root.replaceWith(clone);
+ }
+ page.w.history.replaceState({},'', '#tvtourid=456');
+ page.d.querySelector('.TVPassportAuthority input').value='MANUAL EDIT';
+ page.buttons[1].onclick();
+ assert.equal(page.d.querySelector('.TVTouristSurname input').value,'');
+ assert.equal(page.d.querySelector('.TVPassportAuthority input').value,'MANUAL EDIT');
+ assert.equal(page.d.querySelector('.TVCustomerContactsName input').value,'');
+ assert.equal(page.d.querySelector('#unrelated').value,'UNCHANGED');
+ assert.equal(page.buttons.length,2);
+});
+test('tour card supplies date automatically, including explicit year and current-year omission',async()=>{
+ const page=await setup();
+ const card=page.d.createElement('div');card.className='TVTourCardInfoControl';card.innerHTML='<div class="TVTourCardOption"><i class="TVCalendarIcon"></i><span class="TVTourCardOptionHeader">5 ноября 2027</span></div>';page.d.body.append(card);
+ await new Promise(resolve=>setImmediate(resolve));
+ const date=page.panel.querySelector('input[type=date]');assert.equal(date.value,'2027-11-05');assert.equal(date.readOnly,true);
+ card.querySelector('span').textContent='5 ноября';await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(date.value,`${new Date().getFullYear()}-11-05`);
+ card.querySelector('span').textContent='31 февраля 2027';await new Promise(resolve=>setImmediate(resolve));assert.equal(date.readOnly,false);
+});

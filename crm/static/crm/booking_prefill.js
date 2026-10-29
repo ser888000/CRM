@@ -50,12 +50,55 @@
  }
  function restore(){
   if(!saved)return;
-  if(saved.hash!==location.hash){status.textContent='Вы открыли другой тур. Восстановление старой формы отменено.';return;}
   try{
-   for(const binding of saved.bindings)if(inputFor(binding)!==binding.node)throw Error('Форма была открыта заново. Старое состояние к ней не применяется.');
-   for(const binding of saved.bindings)setInput(binding,binding.before);
-   saved=null;reset.hidden=true;status.textContent='Исходные данные формы восстановлены.';
+
+   // Tourvisor carries its model into a newly rendered tour. Match each value,
+   // rather than trusting old nodes or requiring the old tour's hash.
+   const people=visible('.TVTourBuyTouristItemControl');
+   const targets=new Map();
+   for(const index of new Set(saved.bindings.map(item=>item.person).filter(item=>item!==undefined))){
+    const identity=saved.bindings.filter(item=>item.person===index&&['TVTouristSurname','TVTouristName','TVTouristBirthday','TVPassportNumber'].includes(item.className)&&item.written);
+    targets.set(index,people.map((root,person)=>({root,person})).filter(({root})=>identity.filter(item=>root.querySelector('.'+item.className+' input')?.value===item.written).length>=2).map(item=>item.person));
+   }
+   for(const binding of saved.bindings){
+    if(binding.kind==='gender')continue;
+    const indices=binding.person===undefined?[undefined]:(targets.get(binding.person)||[]);
+    for(const person of indices){
+     const current={...binding,person};
+     let node;try{node=inputFor(current)}catch{continue;}
+     if(!binding.written||node.value!==binding.written)continue;
+     // Only fields containing values actually written by this helper are cleared.
+     setInput(current,binding.before);
+    }
+   }
+   for(const binding of saved.bindings.filter(item=>item.kind==='gender')){
+    // Restore gender only on the original group; a new tour has its own default.
+    try{if(inputFor(binding)===binding.node&&genderOf(binding.node)===binding.value)setInput(binding,binding.before)}catch{}
+   }
+   if(!people.length)throw Error('Откройте форму бронирования, чтобы убрать подставленные данные.');
+   saved=null;reset.hidden=true;status.textContent='Подставленные данные убраны. Ручные изменения сохранены.';
   }catch(error){status.textContent=error.message;}
+ }
+ function readTourDate(){
+  const months=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const dates=new Set();
+  for(const icon of visible('.TVTourCardInfoControl .TVCalendarIcon')){
+   const text=icon.closest('.TVTourCardOption')?.querySelector('.TVTourCardOptionHeader')?.textContent.trim().toLowerCase()||'';
+   const match=text.match(/^(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?$/);
+   if(!match)continue;
+   const month=months.indexOf(match[2]),day=Number(match[1]);
+   // Tourvisor getDateNightOptionSettings omits year ONLY for the current year.
+   const year=Number(match[3]||new Date().getFullYear());
+   const date=new Date(year,month,day);
+   if(month>=0&&date.getFullYear()===year&&date.getMonth()===month&&date.getDate()===day)dates.add(`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
+  }
+  return dates.size===1?[...dates][0]:'';
+ }
+ function updateTourDate(){
+  if(!startDate)return;
+  const date=readTourDate();
+  if(date){startDate.value=date;startDate.readOnly=true;startDate.title='Дата выбранного тура из Турвизора';}
+  else{if(startDate.readOnly)startDate.value='';startDate.readOnly=false;startDate.title='Если дата тура не распознана, укажите её вручную';}
  }
  function normalizeCountry(value){
   const name=String(value||'').toLowerCase().replace(/[^a-zа-яё0-9]/g,'');
@@ -109,6 +152,7 @@
   try{
    const auth=await authorize();if(!auth){panel.remove();return;}
    sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Сначала нажмите «Данные в Турвизор» в нужном договоре CRM.';
+   updateTourDate();
    if(!startDate.value)throw Error('Укажите дату начала новой поездки для правильного возраста туристов.');
    const dataUrl=new URL('/booking-prefill/data/',endpoint);dataUrl.searchParams.set('start',startDate.value);
    const response=await fetch(dataUrl,{credentials:'include',cache:'no-store',redirect:'error'});
@@ -146,7 +190,7 @@
    }
    saved={hash:location.hash,bindings};
    try{
-    for(const binding of bindings)setInput(binding,binding.value);
+    for(const binding of bindings){setInput(binding,binding.value);binding.written=binding.kind==='gender'?binding.value:inputFor(binding).value;}
     reset.hidden=false;const empty=assigned.map((person,index)=>person?null:plan.slots[index].header).filter(Boolean);
     const unused=data.tourists.filter(person=>!assigned.some(item=>item?.id===person.id));
     const issues=unused.flatMap(person=>person.issues||[]);
@@ -154,15 +198,6 @@
    }catch(error){reset.hidden=false;restore();throw error;}
   }catch(error){status.textContent=error.message||'Не удалось заполнить форму.';}
   finally{button.disabled=false;}
- }
- function diagnostics(){
-  const address=value=>{try{const url=new URL(value,location.href);return url.origin+url.pathname}catch{return 'unavailable'}};
-  const fields=[...document.querySelectorAll('input,select,textarea')].filter(node=>!panel?.contains(node)&&node.getClientRects().length&&node.type!=='hidden').slice(0,100).map(node=>{
-   const parents=[];let parent=node.parentElement;
-   for(let depth=0;parent&&depth<5;depth++,parent=parent.parentElement)parents.push({tag:parent.tagName,classes:String(parent.className||'').slice(0,240)});
-   return {tag:node.tagName,type:node.type||'',name:node.name||'',id:node.id||'',placeholder:node.getAttribute('placeholder')||'',classes:String(node.className||'').slice(0,240),parents};
-  });
-  return JSON.stringify({probe_version:6,page:address(location.href),runtime:{TV:typeof window.TV,initTv:typeof window.initTv,keys:Object.keys(window.TV||{}).sort().slice(0,160)},scripts:[...document.scripts].filter(node=>node.src).map(node=>address(node.src)),frames:[...document.querySelectorAll('iframe')].map(node=>address(node.src)),fields},null,2);
  }
  function show(auth){
   if(!document.querySelector('.tv-moduleid-898'))return;
@@ -173,17 +208,13 @@
   status=document.createElement('p');status.setAttribute('role','status');status.textContent='Откройте форму тура. Недостающих туристов можно ввести вручную.';
   reset=document.createElement('button');reset.type='button';reset.textContent='Убрать подставленные данные';reset.hidden=true;
   reset.onclick=restore;
-  const diagnosticButton=document.createElement('button');diagnosticButton.type='button';diagnosticButton.textContent='Скопировать диагностику';
-  diagnosticButton.onclick=async()=>{
-   const text=diagnostics();
-   try{await navigator.clipboard.writeText(text);status.textContent='Диагностика скопирована. Пришлите её в чат. Значения полей в отчёт не включены.';}
-   catch{const output=document.createElement('textarea');output.readOnly=true;output.value=text;output.rows=8;output.style.width='100%';panel.append(output);output.select();status.textContent='Скопируйте этот отчёт и пришлите в чат.';}
-  };
   sourceLabel=document.createElement('p');sourceLabel.textContent=auth.contract?'Источник: договор '+auth.contract.number:'Нажмите «Данные в Турвизор» в исходном договоре CRM.';
   const dateLabel=document.createElement('label');dateLabel.textContent='Начало новой поездки';dateLabel.style.display='block';startDate=document.createElement('input');startDate.type='date';dateLabel.append(startDate);
-  panel.append(title,sourceLabel,dateLabel,document.createElement('br'),button,status,reset,document.createElement('br'),diagnosticButton);document.body.append(panel);
+  panel.append(title,sourceLabel,dateLabel,document.createElement('br'),button,status,reset);document.body.append(panel);updateTourDate();
+  const observer=new MutationObserver(()=>updateTourDate());
+  observer.observe(document.querySelector('.tv-moduleid-898').parentElement,{childList:true,subtree:true,characterData:true});
  }
- window.addEventListener('hashchange',()=>{if(startDate){startDate.value='';status.textContent='Выбран другой тур. Укажите дату начала новой поездки.';}});
+ window.addEventListener('hashchange',()=>{if(startDate){startDate.value='';startDate.readOnly=false;status.textContent='Выбран другой тур. Дата будет прочитана из его формы.';updateTourDate();}});
  async function init(){try{const auth=await authorize();if(auth)show(auth);}catch{/* Public visitors see no UI or technical errors. */}}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
