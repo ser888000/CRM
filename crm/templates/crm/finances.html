@@ -1,5 +1,5 @@
 {% extends 'crm/base.html' %}{% load static money %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'crm/contract_card.css' %}?v=20261025b"><link rel="stylesheet" href="{% static 'crm/journal.css' %}?v=20261028sticky"><link rel="stylesheet" href="{% static 'crm/finances.css' %}?v=20261028sticky">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'crm/contract_card.css' %}?v=20261025b"><link rel="stylesheet" href="{% static 'crm/journal.css' %}?v=20261028sticky"><link rel="stylesheet" href="{% static 'crm/finances.css' %}?v=20261030flat">{% endblock %}
 {% block content %}
 <h1>Финансы</h1>
 {% if perms.crm.add_payment %}<a class="button" href="{% url 'finance_new' %}?return_query={{ return_query|urlencode }}">+ Финансовая операция</a>{% endif %}

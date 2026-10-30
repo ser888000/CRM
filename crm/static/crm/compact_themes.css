@@ -48,3 +48,7 @@ body[data-theme] .task-state.planned,body[data-theme] [data-task-done]:not(.is-p
 body[data-theme] .task-state.done,body[data-theme] [data-task-done].is-paid,body[data-theme] .task-status.is-done{background:#dce9f8;color:#244e80;border:1px solid #aec3df}
 body[data-theme].reference-frame main{padding:10px 12px;margin:0}
 body[data-theme] tr[data-open-row]{cursor:pointer}
+
+body[data-theme] .finance-filters{padding:0;background:transparent;border:0;border-radius:0;margin:7px 0}
+body[data-theme] .finance-filters .finance-search{padding:0;margin:7px 0;gap:9px}
+body[data-theme] .finance-columns{margin-top:7px}
