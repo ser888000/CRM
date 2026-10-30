@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase,Client
@@ -19,7 +20,8 @@ class ETASimpleDownloadTests(TestCase):
         response=self.client.get(self.download_url());payload=response.json()
         self.assertEqual(payload,{
             'hotel':{'name':'TEST HOTEL','address':''},
-            'flight':{'arrival_date':self.arrival.isoformat(),'departure_airport':'SVO','airline':'TEST AIR','flight_number':'TE100'},
+            'flight':{'departure_date':(self.arrival-timedelta(days=1)).isoformat(),'arrival_date':self.arrival.isoformat(),'departure_airport':'SVO','airline':'TEST AIR','flight_number':'TE100'},
+            'return_flight':{'departure_date':self.departure.isoformat(),'arrival_date':'','departure_airport':'CMB','airline':'','flight_number':''},
             'tourists':[{'surname':'EXAMPLE','given_names':'TEST','gender':'male','birth_date':'1985-01-01',
                          'nationality':'Test Country','birth_country':'Test Country','passport_number':'TEST000001',
                          'passport_issued':'2020-01-01','passport_expires':'2040-01-01',
@@ -34,7 +36,7 @@ class ETASimpleDownloadTests(TestCase):
         self.contract.source_data={};self.contract.hotel='';self.contract.save()
         response=self.client.get(self.download_url());self.assertEqual(response.status_code,200)
         data=response.json();self.assertEqual(data['tourists'][0]['passport_number'],'');self.assertEqual(data['tourists'][0]['birth_date'],'')
-        self.assertEqual(data['flight'],dict.fromkeys(('arrival_date','departure_airport','airline','flight_number'),''))
+        self.assertEqual(data['flight'],dict.fromkeys(('departure_date','arrival_date','departure_airport','airline','flight_number'),''))
         self.assertEqual(ETAApplication.objects.count(),0);self.assertEqual(ETAExport.objects.count(),0)
         page=self.client.get(reverse('eta_page',args=[self.contract.pk]))
         self.assertContains(page,self.download_url());self.assertContains(page,'Скачать JSON')
@@ -54,3 +56,28 @@ class ETASimpleDownloadTests(TestCase):
         self.assertEqual(response.json()['tourists'][0]['surname'],'SECOND')
         ContractLine.objects.filter(contract=self.contract,tourist=other).delete()
         self.assertEqual(self.client.get(self.download_url(other)).status_code,404)
+
+    def test_selected_tourists_share_trip_without_creating_applications(self):
+        second=self.make_tourist('SECOND','1990-02-01','TEST000002')
+        self.make_tourist('UNSELECTED','1992-03-01','TEST000003')
+        flight=self.contract.source_data['transport'][1]
+        flight.update(dateto=(self.departure+timedelta(days=1)).isoformat(),aircompany='RETURN AIR',number='TE101')
+        self.contract.save()
+        response=self.client.post(reverse('eta_selected_download',args=[self.contract.pk]),{'tourists':[str(self.tourist.pk),str(second.pk)]})
+        self.assertEqual(response.status_code,200)
+        data=response.json()
+        self.assertEqual([t['surname'] for t in data['tourists']],['EXAMPLE','SECOND'])
+        self.assertEqual(data['return_flight'],{'departure_date':self.departure.isoformat(),'arrival_date':(self.departure+timedelta(days=1)).isoformat(),
+            'departure_airport':'CMB','airline':'RETURN AIR','flight_number':'TE101'})
+        self.assertEqual(ETAApplication.objects.count(),1);self.assertEqual(ETAExport.objects.count(),0)
+        self.assertEqual(self.client.get(self.download_url()).json()['flight'],data['flight'])
+        self.assertEqual(self.client.get(self.download_url()).json()['return_flight'],data['return_flight'])
+        self.assertContains(self.client.get(reverse('eta_page',args=[self.contract.pk])),'Скачать JSON выбранных туристов')
+
+    def test_empty_or_unlinked_selection_does_not_export_other_people(self):
+        url=reverse('eta_selected_download',args=[self.contract.pk])
+        self.assertRedirects(self.client.post(url,{}),reverse('eta_page',args=[self.contract.pk]))
+        other=self.make_tourist('OTHER','1990-01-01','OTHER00001')
+        ContractLine.objects.filter(contract=self.contract,tourist=other).delete()
+        self.assertRedirects(self.client.post(url,{'tourists':[str(self.tourist.pk),str(other.pk)]}),reverse('eta_page',args=[self.contract.pk]))
+        self.assertEqual(ETAExport.objects.count(),0)

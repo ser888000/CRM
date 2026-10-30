@@ -259,6 +259,33 @@ def approval(request,pk,application_id):
     response['X-Content-Type-Options']='nosniff';return response
 
 
+def simple_download_payload(contract,tourists):
+    rows=[];hotel_name=contract.hotel
+    for tourist in tourists:
+        data=eta.initial_data(contract,tourist)
+        hotel_name=data.get('hotel_name','')
+        rows.append({
+            'surname':data.get('surname',''),'given_names':data.get('given_names',''),
+            'gender':data.get('gender',''),'birth_date':data.get('birthday',''),
+            'nationality':data.get('nationality',''),'birth_country':data.get('birth_country',''),
+            'passport_number':data.get('passport_number',''),'passport_issued':data.get('passport_issued',''),
+            'passport_expires':data.get('passport_expires',''),
+            'home_address':data.get('home_address',''),'phone':data.get('phone',''),
+        })
+    flights=contract.source_data.get('transport',[])
+    flights=flights if isinstance(flights,list) else []
+    airports=('CMB','HRI','JAF')
+    outbound=[f for f in flights if isinstance(f,dict) and str(f.get('terminalcodeto','')).upper() in airports]
+    inbound=[f for f in flights if isinstance(f,dict) and str(f.get('terminalcodefrom','')).upper() in airports]
+    def flight_data(matches):
+        f=matches[0] if len(matches)==1 else {}
+        return {'departure_date':eta.source_date(f.get('datefrom')),'arrival_date':eta.source_date(f.get('dateto')),
+                'departure_airport':f.get('terminalcodefrom') or '', 'airline':f.get('aircompany') or '',
+                'flight_number':f.get('number') or ''}
+    return {'hotel':{'name':hotel_name,'address':''},'flight':flight_data(outbound),
+            'return_flight':flight_data(inbound),'tourists':rows}
+
+
 @login_required
 @never_cache
 @require_GET
@@ -268,17 +295,21 @@ def simple_tourist_download(request,pk,tourist_id):
     require(request.user)
     contract=get_object_or_404(Contract.objects.select_related('customer'),pk=pk)
     tourist=get_object_or_404(eta.linked(contract),pk=tourist_id)
-    data=eta.initial_data(contract,tourist)
-    payload={
-        'hotel':{'name':data.get('hotel_name',''),'address':''},
-        'flight':{key:data.get(key,'') for key in ('arrival_date','departure_airport','airline','flight_number')},
-        'tourists':[{
-            'surname':data.get('surname',''),'given_names':data.get('given_names',''),
-            'gender':data.get('gender',''),'birth_date':data.get('birthday',''),
-            'nationality':data.get('nationality',''),'birth_country':data.get('birth_country',''),
-            'passport_number':data.get('passport_number',''),'passport_issued':data.get('passport_issued',''),
-            'passport_expires':data.get('passport_expires',''),
-            'home_address':data.get('home_address',''),'phone':data.get('phone',''),
-        }],
-    }
-    return json_download(payload,f'eta-tourist-{contract.pk}-{tourist.pk}.json')
+    return json_download(simple_download_payload(contract,[tourist]),f'eta-tourist-{contract.pk}-{tourist.pk}.json')
+
+
+@login_required
+@never_cache
+@require_POST
+@sensitive_post_parameters()
+@sensitive_variables()
+def simple_selected_download(request,pk):
+    require(request.user)
+    contract=get_object_or_404(Contract.objects.select_related('customer'),pk=pk)
+    # Only membership is checked; incomplete passport/travel data never blocks export.
+    field=forms.ModelMultipleChoiceField(queryset=eta.linked(contract))
+    try:tourists=list(field.clean(request.POST.getlist('tourists')))
+    except ValidationError:
+        messages.error(request,'Отметьте туристов этого договора для скачивания JSON.')
+        return redirect('eta_page',pk=pk)
+    return json_download(simple_download_payload(contract,tourists),f'eta-tourists-{contract.pk}.json')
