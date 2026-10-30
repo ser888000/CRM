@@ -24,7 +24,7 @@ def contracts(request):
     context=journal_context(params,DateRange)
     if context['dateform'].is_valid():
         from .contract_journal import COLUMNS
-        allowed={'customer','email','phone','number','operator','country','start','end','sort','period'}|{'f_'+key for key,_ in COLUMNS}
+        allowed={'customer','email','phone','number','operator','country','start','end','sort','period'}|{'f_'+key for key,_ in COLUMNS}|{'q_'+key for key,_ in COLUMNS}
         saved=params.copy()
         for key in list(saved):
             if key not in allowed:del saved[key]

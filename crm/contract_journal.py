@@ -1,3 +1,4 @@
+from .column_search import matches as column_matches,decorate as decorate_columns
 """Journal filtering uses Unicode casefold on SQLite as well as PostgreSQL."""
 from datetime import timedelta
 from decimal import Decimal
@@ -60,6 +61,8 @@ def journal_context(params,dateform):
         choices=sorted({r['cells'][i]['filter_value'] for r in rows}|set(selected),key=normalize_location)
         columns.append({'key':key,'label':label,'options':[{'value':v,'selected':v in selected} for v in choices],'active':bool(selected),'direction':'↑' if params.get('sort')==key else '↓' if params.get('sort')=='-'+key else '', 'sort':('-' if params.get('sort')==key else '')+key})
     rows=[r for r in rows if all(not params.getlist('f_'+c['key']) or c['filter_value'] in params.getlist('f_'+c['key']) for c in r['cells'])]
+    rows=[r for r in rows if column_matches({c['key']:c['filter_value'] for c in r['cells']},params)]
+    decorate_columns(columns,params)
     sort=params.get('sort','');key=sort.lstrip('-')
     if key in dict(COLUMNS):
         present=[r for r in rows if r['values'][key] is not None];missing=[r for r in rows if r['values'][key] is None]

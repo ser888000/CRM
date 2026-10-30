@@ -1,3 +1,4 @@
+from .column_search import matches as column_matches,decorate as decorate_columns
 """Customer directory in the main workspace, with shared person/company forms."""
 import hashlib
 import json
@@ -20,7 +21,7 @@ from .customer_matching import contacts,phone_key,customer_matches
 from .card_views import audit
 
 COLUMNS=[('name','Заказчик'),('kind','Тип'),('phone','Телефоны'),('email','E-mail'),('inn','ИНН'),('contracts','Договоров')]
-PARAMS={'name','phone','email','kind','sort','page'}|{'f_'+key for key,_ in COLUMNS}
+PARAMS={'name','phone','email','kind','sort','page'}|{'f_'+key for key,_ in COLUMNS}|{'q_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
     data=QueryDict(value[:8000]).copy()
@@ -74,13 +75,12 @@ def journal(request):
         values=sorted({r['cells'][index]['filter_value'] for r in rows}|set(selected),key=normalize_location)
         columns.append({'key':key,'label':label,'remote':len(values)>100,'options':[{'value':v,'selected':v in selected} for v in dict.fromkeys([*selected,*values[:100]])],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
     rows=[r for r in rows if all(not request.GET.getlist('f_'+c['key']) or c['filter_value'] in request.GET.getlist('f_'+c['key']) for c in r['cells'])]
+    rows=[r for r in rows if column_matches({c['key']:c['filter_value'] for c in r['cells']},request.GET)]
+    decorate_columns(columns,request.GET)
     sort=request.GET.get('sort','name');key=sort.lstrip('-')
     if key in dict(COLUMNS):rows.sort(key=lambda r:r['values'][key] if key=='contracts' else normalize_location(r['values'][key]),reverse=sort.startswith('-'))
-    count=len(rows);page=Paginator(rows,100).get_page(request.GET.get('page'));pagination=[]
-    for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
-        if number:
-            params=request.GET.copy();params['page']=number;pagination.append({'label':label,'url':'?'+params.urlencode()})
-    return render(request,'crm/customers.html',{'filters':filters,'columns':columns,'table_rows':page.object_list,'count':count,'page':page,'pagination':pagination,'sort':sort,'return_query':safe_query(request.GET.urlencode())})
+    count=len(rows);contract_total=sum(r['values']['contracts'] for r in rows)
+    return render(request,'crm/customers.html',{'filters':filters,'columns':columns,'table_rows':rows,'count':count,'contract_total':contract_total,'sort':sort,'return_query':safe_query(request.GET.urlencode())})
 
 class CustomerEditor(CustomerCardForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)

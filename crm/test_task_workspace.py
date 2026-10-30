@@ -67,10 +67,10 @@ class TaskWorkspaceTests(TestCase):
         self.assertEqual(self.client.get('/tasks/new/').status_code,403)
         secure=Client(enforce_csrf_checks=True);secure.force_login(self.user)
         self.assertEqual(secure.post('/tasks/actions/',{'action':'complete','tasks':[self.old.pk]}).status_code,403)
-    def test_pagination_and_page_preserved_in_back_link(self):
+    def test_continuous_list_accepts_legacy_page_links(self):
         Task.objects.bulk_create([Task(title='Много задач',due=self.today) for _ in range(105)])
         response=self.client.get('/tasks/?period=all&page=2')
-        self.assertEqual(response.context['count'],108);self.assertEqual(len(response.context['rows']),8)
+        self.assertEqual(response.context['count'],108);self.assertEqual(len(response.context['rows']),108)
         self.assertIn('page=2',response.context['return_query'])
         self.assertNotIn('page=',response.context['tabs'][0]['url'])
     def test_redirect_cannot_escape_task_journal(self):

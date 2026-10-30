@@ -1,3 +1,4 @@
+from .column_search import matches as column_matches,decorate as decorate_columns
 """Daily task journal, editor and explicit bulk actions."""
 from django.db.models import Q
 from datetime import timedelta
@@ -24,7 +25,7 @@ from .services import repeat_tasks
 PERIODS=[('today','Сегодня'),('tomorrow','Завтра')]
 STATUSES=[('all','Все'),('planned','Запланировано'),('done','Выполнено'),('overdue','Просрочено')]
 COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('contacts','Телефон / email'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
-PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}
+PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}|{'q_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
     data=QueryDict(value[:4000]).copy()
@@ -86,7 +87,7 @@ def journal(request):
     from .models import Booking
     fields=['id','title','due','done','booking_number','task_type_id','customer_id','contract_id','operator_id','employee_id']
     if params.get('q'):fields.extend(['description','result'])
-    fast_scope=mode in ('today','tomorrow') and not search_all_dates and not any(params.getlist('f_'+key) for key,_ in COLUMNS) and not request.GET.get('choice_column')
+    fast_scope=mode in ('today','tomorrow') and not search_all_dates and not any(params.getlist('f_'+key) for key,_ in COLUMNS) and not any(params.get('q_'+key) for key,_ in COLUMNS) and not request.GET.get('choice_column')
     queryset=Task.objects.all()
     if fast_scope:queryset=queryset.filter(Q(done=False)|Q(due__in=[today,today+timedelta(days=1)]))
     tasks=list(queryset.only(*fields).order_by('done','due','pk'))
@@ -138,6 +139,8 @@ def journal(request):
         shown=sorted(set(choices[:100])|set(selected),key=normalize_location) if remote else choices
         columns.append({'key':key,'label':label,'remote':remote,'options':[{'value':v,'selected':v in selected} for v in shown],'active':bool(selected),'direction':'↑' if request.GET.get('sort')==key else '↓' if request.GET.get('sort')=='-'+key else '', 'sort':('-' if request.GET.get('sort')==key else '')+key})
     tasks=[t for t in tasks if all(not request.GET.getlist('f_'+key) or t.column_values[key] in request.GET.getlist('f_'+key) for key,_ in COLUMNS)]
+    tasks=[t for t in tasks if column_matches(t.column_values,request.GET)]
+    decorate_columns(columns,request.GET)
     tabs=[];status_tabs=[]
     for key,label in PERIODS:
         query=request.GET.copy();query.pop('page',None);query['period']=key
@@ -151,15 +154,11 @@ def journal(request):
     rows=[t for t in tasks if not t.done and t.due<today] if status=='overdue' else [t for t in period_tasks if in_status(t,status)]
     sort=request.GET.get('sort','');key=sort.lstrip('-')
     if key in dict(COLUMNS):rows.sort(key=lambda t:t.due if key=='due' else normalize_location(t.column_values[key]),reverse=sort.startswith('-'))
-    total=len(rows);page=Paginator(rows,100).get_page(request.GET.get('page'));rows=list(page.object_list)
-    pagination=[]
-    for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
-        if number:
-            query=request.GET.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
+    total=len(rows)
     descriptions={pk:(description,result) for pk,description,result in Task.objects.filter(pk__in=[t.pk for t in rows]).values_list('pk','description','result')}
     for t in rows:
         t.description,t.result=descriptions[t.pk];t.overdue=not t.done and t.due<today
-    return render(request,'crm/tasks.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/tasks/',params),'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total,'page':page,'pagination':pagination})
+    return render(request,'crm/tasks.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/tasks/',params),'rows':rows,'filters':filters,'period':mode,'status':status,'tabs':tabs,'status_tabs':status_tabs,'columns':columns,'sort':sort,'today':today,'return_query':safe_query(request.GET.urlencode()),'count':total})
 
 class TaskEditorForm(forms.ModelForm):
     customer_email=forms.CharField(label='email заказчика',required=False,disabled=True)

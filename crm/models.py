@@ -562,3 +562,11 @@ class ETAOfficialNotice(models.Model):
         return {'receipt':'Подтверждение приёма','approval':'Одобрение ETA','referral':'Дополнительное рассмотрение','unknown':'Нужна проверка типа письма'}.get(self.kind,'Нужна проверка')
     class Meta:
         verbose_name='Официальное письмо ETA';verbose_name_plural='Официальные письма ETA'
+
+
+class UserInterfacePreference(models.Model):
+    user=models.OneToOneField(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name='interface_preference')
+    theme=models.CharField(max_length=16,choices=[('office','Классический офис'),('accounting','Учётная система'),('spreadsheet','Табличный режим')],default='accounting')
+    column_widths=models.JSONField(default=dict,blank=True)
+    class Meta:
+        verbose_name='Настройки интерфейса';verbose_name_plural='Настройки интерфейса'

@@ -58,11 +58,11 @@ class CustomerWorkspaceTests(TestCase):
         self.client.force_login(self.user)
         response=self.client.post('/customers/new/',{'customer-new-kind':'person','customer-new-surname':'Из диалога','customer-new-given_name':'Иван'})
         self.assertEqual(response.status_code,200);self.assertIn('id',response.json())
-    def test_pagination_and_similar_records_are_not_merged(self):
+    def test_continuous_list_and_similar_records_are_not_merged(self):
         similar=Customer.objects.create(name=self.person.name,main_phone=self.person.main_phone)
         response=self.client.get(f'/customers/{self.person.pk}/');self.assertContains(response,'Похожие записи');self.assertEqual(response.context['similar'][0].pk,similar.pk)
         Customer.objects.bulk_create([Customer(name='Заказчик '+str(i)) for i in range(101)])
-        response=self.client.get('/customers/?page=2');self.assertEqual(response.context['count'],104);self.assertEqual(len(response.context['table_rows']),4)
+        response=self.client.get('/customers/?page=2');self.assertEqual(response.context['count'],104);self.assertEqual(len(response.context['table_rows']),104)
         self.assertIn('page=2',response.context['return_query'])
 
     def test_form_scripts_resolve_to_existing_static_assets(self):

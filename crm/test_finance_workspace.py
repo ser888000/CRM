@@ -34,10 +34,10 @@ class FinanceWorkspaceTests(TestCase):
         self.assertEqual(response.context['count'],4);self.assertEqual(response.context['start_value'],'2026-10-01')
         for query in ('start=bad','start=2026-11-01&end=2026-10-01'):
             r=self.client.get('/finances/?'+query);self.assertFalse(r.context['dateform'].is_valid());self.assertEqual(r.context['count'],0)
-    def test_totals_include_all_pages(self):
+    def test_continuous_list_contains_all_rows_and_totals(self):
         Payment.objects.bulk_create([Payment(contract=self.contract,kind='customer',amount=1,method=self.method,date=date(2026,10,25)) for _ in range(101)])
         r=self.client.get('/finances/?page=2')
-        self.assertEqual(r.context['count'],105);self.assertEqual(len(r.context['rows']),5)
+        self.assertEqual(r.context['count'],105);self.assertEqual(len(r.context['rows']),105)
         self.assertEqual(r.context['incoming'],Decimal('1151'));self.assertIn('page=2',r.context['return_query'])
     def payment_data(self,**kwargs):
         return {'contract':self.contract.pk,'customer':self.customer.pk,'date':'2026-10-25','kind':'customer','amount':'1 234,56','method':self.method.pk,'currency':'RUB','notes':'Записано через карточку',**kwargs}

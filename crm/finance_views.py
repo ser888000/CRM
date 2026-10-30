@@ -1,3 +1,4 @@
+from .column_search import matches as column_matches,decorate as decorate_columns
 """Financial journal: filters and totals share the same set of operations."""
 from datetime import timedelta
 from decimal import Decimal
@@ -20,7 +21,7 @@ from .forms import PaymentForm
 from .templatetags.money import money
 
 COLUMNS=[('date','Дата'),('customer','Заказчик'),('number','Договор'),('operator','ТО'),('kind','Операция'),('incoming','Поступление, ₽'),('outgoing','Расход, ₽'),('method','Способ оплаты'),('currency','Валюта ТО'),('rate','Курс'),('notes','Примечание')]
-PARAMS={'customer','number','operator','method','kind','start','end','sort','page','period'}|{'f_'+key for key,_ in COLUMNS}
+PARAMS={'customer','number','operator','method','kind','start','end','sort','page','period'}|{'f_'+key for key,_ in COLUMNS}|{'q_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
     data=QueryDict(value[:8000]).copy()
@@ -103,17 +104,17 @@ def journal(request):
         options=sorted({row['cells'][i]['filter_value'] for row in rows}|set(selected),key=normalize_location)
         columns.append({'key':key,'label':label,'options':[{'value':v,'selected':v in selected} for v in options],'active':bool(selected),'direction':'↑' if params.get('sort')==key else '↓' if params.get('sort')=='-'+key else '', 'sort':('-' if params.get('sort')==key else '')+key})
     rows=[row for row in rows if all(not params.getlist('f_'+cell['key']) or cell['filter_value'] in params.getlist('f_'+cell['key']) for cell in row['cells'])]
+    rows=[r for r in rows if column_matches({c['key']:c['filter_value'] for c in r['cells']},params)]
+    decorate_columns(columns,params)
     sort=params.get('sort','');key=sort.lstrip('-')
     if key in dict(COLUMNS):
         present=[r for r in rows if r['values'][key] is not None];missing=[r for r in rows if r['values'][key] is None]
         present.sort(key=lambda r:normalize_location(r['values'][key]) if isinstance(r['values'][key],str) else r['values'][key],reverse=sort.startswith('-'));rows=present+missing
     count=len(rows);incoming=sum((r['payment'].incoming for r in rows),Decimal('0'));outgoing=sum((r['payment'].outgoing for r in rows),Decimal('0'))
-    page=Paginator(rows,100).get_page(params.get('page'));pagination=[]
-    for number,label in [(page.previous_page_number() if page.has_previous() else None,'← Назад'),(page.next_page_number() if page.has_next() else None,'Далее →')]:
-        if number:
-            query=params.copy();query['page']=number;pagination.append({'label':label,'url':'?'+query.urlencode()})
-    footer=[{'key':key,'text':money(incoming) if key=='incoming' else money(outgoing) if key=='outgoing' else f'ИТОГО: {count}' if key=='date' else ''} for key,_ in COLUMNS]
-    return render(request,'crm/finances.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/finances/',params),'filters':filters,'dateform':filters,'columns':columns,'table_rows':page.object_list,'rows':[r['payment'] for r in page.object_list],'count':count,'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'footer':footer,'sort':sort,'period':params['period'],'start_value':params['start'],'end_value':params['end'],'page':page,'pagination':pagination,'return_query':safe_query(params.urlencode())})
+    rates=[r['values']['rate'] for r in rows if r['values']['rate'] is not None]
+    average_rate=sum(rates,Decimal('0'))/len(rates) if rates else None
+    footer=[{'key':key,'text':money(incoming) if key=='incoming' else money(outgoing) if key=='outgoing' else 'Ср. '+money(average_rate) if key=='rate' and average_rate is not None else f'ИТОГО: {count}' if key=='date' else ''} for key,_ in COLUMNS]
+    return render(request,'crm/finances.html',{'search_all_dates':search_all_dates,'reset_filters_url':reset_link('/finances/',params),'filters':filters,'dateform':filters,'columns':columns,'table_rows':rows,'rows':[r['payment'] for r in rows],'count':count,'incoming':incoming,'outgoing':outgoing,'balance':incoming-outgoing,'footer':footer,'sort':sort,'period':params['period'],'start_value':params['start'],'end_value':params['end'],'return_query':safe_query(params.urlencode())})
 
 class FinanceEditor(PaymentForm):
     version=forms.CharField(required=False,widget=forms.HiddenInput)

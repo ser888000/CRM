@@ -1,3 +1,4 @@
+from crm import interface_preferences
 from crm import eta_api,eta_live_views
 from crm import eta_views
 from crm import customer_passport_notes_views
@@ -6,6 +7,7 @@ from django.contrib import admin
 from django.urls import path
 from crm import one_c_views,reference_dialog,views,import_views,card_views,passport_ocr,customer_views,batch_views,task_views,finance_views,update_views,customer_workspace,library_views,legacy_history_views,tourist_lookup
 urlpatterns = [
+path('preferences/interface/',interface_preferences.preferences,name='interface_preferences'),
 path('contracts/<int:pk>/eta/tourists/json/',eta_views.simple_selected_download,name='eta_selected_download'),
 path('contracts/<int:pk>/eta/tourists/<int:tourist_id>/json/',eta_views.simple_tourist_download,name='eta_simple_download'),
 path('api/eta/v1/claim/',eta_api.claim),
