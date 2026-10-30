@@ -257,3 +257,28 @@ def approval(request,pk,application_id):
     if not app.approval_notice:raise Http404
     response=FileResponse(io.BytesIO(bytes(app.approval_notice)),as_attachment=True,filename=f'eta-{app.pk}.pdf',content_type='application/pdf')
     response['X-Content-Type-Options']='nosniff';return response
+
+
+@login_required
+@never_cache
+@require_GET
+@sensitive_variables()
+def simple_tourist_download(request,pk,tourist_id):
+    """Read-only handoff for one linked tourist; no application or readiness checks."""
+    require(request.user)
+    contract=get_object_or_404(Contract.objects.select_related('customer'),pk=pk)
+    tourist=get_object_or_404(eta.linked(contract),pk=tourist_id)
+    data=eta.initial_data(contract,tourist)
+    payload={
+        'hotel':{'name':data.get('hotel_name',''),'address':''},
+        'flight':{key:data.get(key,'') for key in ('arrival_date','departure_airport','airline','flight_number')},
+        'tourists':[{
+            'surname':data.get('surname',''),'given_names':data.get('given_names',''),
+            'gender':data.get('gender',''),'birth_date':data.get('birthday',''),
+            'nationality':data.get('nationality',''),'birth_country':data.get('birth_country',''),
+            'passport_number':data.get('passport_number',''),'passport_issued':data.get('passport_issued',''),
+            'passport_expires':data.get('passport_expires',''),
+            'home_address':data.get('home_address',''),'phone':data.get('phone',''),
+        }],
+    }
+    return json_download(payload,f'eta-tourist-{contract.pk}-{tourist.pk}.json')
