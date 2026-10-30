@@ -7,7 +7,7 @@ from .models import Contract,normalize_location
 from .templatetags.money import money
 from .customer_matching import phone_key
 
-COLUMNS=[('number','Договор'),('date','Дата'),('customer','Заказчик'),('operator','ТО'),('country','Страна'),('hotel','Отель'),('start','Начало'),('end','Окончание'),('source_currency','Валюта'),('amount','Сумма'),('paid','Оплачено'),('debt','Долг'),('cost','Себестоимость'),('profit','Доход'),('operator_due','Срок оплаты ТО'),('payment_method','Способ оплаты'),('notes','Примечание'),('departure','Город вылета'),('operator_paid_in_full','Оплачено ТО'),('adults','Взр'),('children','Дети')]
+COLUMNS=[('number','Номер'),('date','Дата'),('customer','Заказчик'),('operator','ТО'),('country','Страна'),('hotel','Отель'),('start','Начало'),('end','Окончание'),('source_currency','Вал'),('amount','Сумма'),('paid','Оплачено'),('debt','Долг'),('cost','Себест'),('profit','Доход'),('operator_due','Срок ТО'),('payment_method','Способ оплаты'),('notes','Примечание'),('departure','Город вылета'),('operator_paid_in_full','Оплачено ТО'),('adults','Взр'),('children','Дети')]
 MONEY={'amount','paid','debt','cost','profit'}
 DATES={'date','start','end','operator_due'}
 

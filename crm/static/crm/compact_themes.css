@@ -43,3 +43,8 @@ body[data-theme] .remote-results{top:26px;border-radius:1px;box-shadow:0 2px 7px
 body[data-theme] .remote-results [role=option]{padding:5px 7px;font-size:12px}
 body[data-theme] .remote-results [role=option]:hover,body[data-theme] .remote-results [aria-selected=true]{background:#e7eef8}
 body[data-theme] .reference-dialog::backdrop,body[data-theme] #new-customer-dialog::backdrop{background:#19233266}
+/* Two distinct task states, with text as well as colour. */
+body[data-theme] .task-state.planned,body[data-theme] [data-task-done]:not(.is-paid),body[data-theme] .task-status:not(.is-done){background:#fff0ce;color:#78510e;border:1px solid #dcc28d}
+body[data-theme] .task-state.done,body[data-theme] [data-task-done].is-paid,body[data-theme] .task-status.is-done{background:#dce9f8;color:#244e80;border:1px solid #aec3df}
+body[data-theme].reference-frame main{padding:10px 12px;margin:0}
+body[data-theme] tr[data-open-row]{cursor:pointer}
