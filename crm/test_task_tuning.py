@@ -18,7 +18,7 @@ class TaskTuningTests(TestCase):
         response=self.client.get('/tasks/?period=all')
         self.assertContains(response,'name="tasks" value="36071"')
         self.assertContains(response,f'href="/customers/{self.customer.pk}/"')
-        self.assertContains(response,'Телефон / email');self.assertContains(response,self.customer.main_phone)
+        self.assertContains(response,'Телефон / e-mail');self.assertContains(response,self.customer.main_phone)
         self.client.post('/tasks/actions/',{'tasks':'36071','action':'complete'})
         self.task.refresh_from_db();self.assertTrue(self.task.done)
         self.client.post('/tasks/actions/',{'tasks':'36071','action':'reschedule','quick_action':'today'})

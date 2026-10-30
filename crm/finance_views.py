@@ -20,7 +20,7 @@ from .models import Payment,PaymentMethod,Contract,AuditEvent,payment_operation_
 from .forms import PaymentForm
 from .templatetags.money import money
 
-COLUMNS=[('date','Дата'),('customer','Заказчик'),('number','Договор'),('operator','ТО'),('kind','Операция'),('incoming','Поступление, ₽'),('outgoing','Расход, ₽'),('method','Способ оплаты'),('currency','Валюта ТО'),('rate','Курс'),('notes','Примечание')]
+COLUMNS=[('date','Дата'),('customer','Заказчик'),('number','Договор'),('operator','ТО'),('kind','Операция'),('incoming','Приход'),('outgoing','Расход'),('method','Оплата'),('currency','Вал'),('rate','Курс'),('notes','Примечание')]
 PARAMS={'customer','number','operator','method','kind','start','end','sort','page','period'}|{'f_'+key for key,_ in COLUMNS}|{'q_'+key for key,_ in COLUMNS}
 
 def safe_query(value):

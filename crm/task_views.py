@@ -24,7 +24,7 @@ from .services import repeat_tasks
 
 PERIODS=[('today','Сегодня'),('tomorrow','Завтра')]
 STATUSES=[('all','Все'),('planned','Запланировано'),('done','Выполнено'),('overdue','Просрочено')]
-COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('contacts','Телефон / email'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
+COLUMNS=[('title','Задача и описание'),('due','Срок'),('customer','Заказчик / договор'),('contacts','Телефон / e-mail'),('operator','ТО / брони'),('employee','Сотрудник'),('status','Статус')]
 PARAMS={'period','status','start','end','q','customer','operator','employee','page','sort'}|{'f_'+key for key,_ in COLUMNS}|{'q_'+key for key,_ in COLUMNS}
 
 def safe_query(value):
