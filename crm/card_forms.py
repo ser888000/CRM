@@ -72,9 +72,15 @@ class LineCardForm(forms.ModelForm):
         localized_fields=['amount']
 
 class TaskCardForm(forms.ModelForm):
+    @property
+    def task_done(self):
+        return self.fields['done'].to_python(self['done'].value())
+
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['task_type'].label='Задача'
+        self.fields['done'].widget=forms.HiddenInput()
+        self.fields['done'].label='Статус'
         if self.instance.pk and not self.instance.task_type_id:
             self.fields['task_type'].empty_label=self.instance.title+' (текущее)'
             self.fields['task_type'].required=False

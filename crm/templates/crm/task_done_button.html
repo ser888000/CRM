@@ -1,0 +1,1 @@
+{{ field }}<button type="button" class="operator-paid-status {% if task_done %}is-paid{% endif %}" data-task-done="{{ field.id_for_label }}" aria-pressed="{{ task_done|yesno:'true,false' }}">{{ task_done|yesno:'✓ Выполнено,○ Запланировано' }}</button>
