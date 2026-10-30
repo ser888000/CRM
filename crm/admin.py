@@ -201,6 +201,11 @@ class CustomerAdmin(AuditedAdmin):
 class TouristAdmin(AuditedAdmin):
     from .forms import TouristForm
     form=TouristForm
+    readonly_fields=['eta_documents']
+    @admin.display(description='ETA Шри-Ланки')
+    def eta_documents(self,obj):
+        if not obj or not obj.pk:return 'После сохранения туриста'
+        return format_html('<a href="{}">Официальные письма и документы ETA</a>',reverse('eta_tourist',args=[obj.pk]))
     list_editable=['is_default']
     list_display=['name','birthday','customer','is_default']
     search_fields=['name']

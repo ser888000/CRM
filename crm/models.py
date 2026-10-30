@@ -526,7 +526,39 @@ class ETAApplication(models.Model):
     submission_authorized_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True)
     approval_notice=models.BinaryField(null=True,blank=True)
     approval_sha256=models.CharField(max_length=64,blank=True)
+    transport_state=models.CharField(max_length=20,default='manual')
+    transport_action=models.CharField(max_length=16,default='prepare')
+    worker_id=models.CharField(max_length=80,blank=True)
+    lease_sha256=models.CharField(max_length=64,blank=True,editable=False)
+    lease_until=models.DateTimeField(null=True,blank=True)
+    next_check_at=models.DateTimeField(null=True,blank=True)
+    submission_started_at=models.DateTimeField(null=True,blank=True)
     updated_at=models.DateTimeField(auto_now=True)
+    @property
+    def transport_label(self):
+        return {'manual':'Резервный обмен файлами','queued':'Ожидает исполнителя','leased':'Исполнитель работает',
+                'waiting':'Ожидает вашей проверки','stopped':'Нужно ваше участие','completed':'Завершено'}.get(self.transport_state,'Нужно проверить состояние')
     class Meta:
         verbose_name='Задание ETA';verbose_name_plural='Задания ETA'
         constraints=[models.UniqueConstraint(fields=['contract','tourist'],name='unique_eta_contract_tourist')]
+
+# Transport metadata lives on the existing application, never in a second job ledger.
+class ETAOfficialNotice(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    application=models.ForeignKey(ETAApplication,on_delete=models.PROTECT,null=True,blank=True,related_name='official_notices')
+    sha256=models.CharField(max_length=64,unique=True)
+    original=models.BinaryField(editable=False)
+    safe_text=models.TextField()
+    kind=models.CharField(max_length=24,default='unknown')
+    source=models.CharField(max_length=16,default='mail')
+    trusted=models.BooleanField(default=False)
+    review_reason=models.CharField(max_length=500,blank=True)
+    identifiers=models.JSONField(default=dict)
+    received_at=models.DateTimeField(auto_now_add=True)
+    accepted_at=models.DateTimeField(null=True,blank=True)
+    accepted_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True)
+    @property
+    def kind_label(self):
+        return {'receipt':'Подтверждение приёма','approval':'Одобрение ETA','referral':'Дополнительное рассмотрение','unknown':'Нужна проверка типа письма'}.get(self.kind,'Нужна проверка')
+    class Meta:
+        verbose_name='Официальное письмо ETA';verbose_name_plural='Официальные письма ETA'

@@ -30,3 +30,14 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
 FORMAT_MODULE_PATH=['crm.formats']
 USE_THOUSAND_SEPARATOR=True
+
+# Separate high-entropy bearer credentials; no secrets are shipped to a browser.
+ETA_EXECUTOR_ENABLED = os.getenv('ETA_EXECUTOR_ENABLED', '0') == '1'
+ETA_WORKER_TOKEN = os.getenv('ETA_WORKER_TOKEN', '')
+ETA_MAIL_TOKEN = os.getenv('ETA_MAIL_TOKEN', '')
+ETA_MAIL_OFFICIAL_DOMAINS = tuple(filter(None, os.getenv('ETA_MAIL_OFFICIAL_DOMAINS', '').lower().split(',')))
+ETA_MAIL_AUTHSERV_ID = os.getenv('ETA_MAIL_AUTHSERV_ID', '')
+ETA_MAIL_AUTOMATIC_TRUST = os.getenv('ETA_MAIL_AUTOMATIC_TRUST', '0') == '1'
+
+# v1 PDF results use bounded base64 uploads; API enforces a smaller per-role limit.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 16 * 1024 * 1024

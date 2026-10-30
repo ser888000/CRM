@@ -3,6 +3,7 @@ import json
 from datetime import date
 from decimal import Decimal
 from django import forms
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -66,7 +67,7 @@ def page(request,pk):
         app.issues=eta.assess(app) if not app.active_export_id else []
         app.source_changed=app.source_hash!=eta.source_hash(contract,app.tourist) if app.source_hash else False
     batches=ETAExport.objects.filter(contract=contract).defer('payload').order_by('-created_at')[:30]
-    return render(request,'crm/eta/page.html',{'contract':contract,'selection_form':form,'applications':applications,'batches':batches,'result_form':ETAResultForm(),'has_tourists':eta.linked(contract).exists()})
+    return render(request,'crm/eta/page.html',{'contract':contract,'selection_form':form,'applications':applications,'batches':batches,'result_form':ETAResultForm(),'has_tourists':eta.linked(contract).exists(),'executor_enabled':settings.ETA_EXECUTOR_ENABLED})
 
 
 @login_required
@@ -187,7 +188,7 @@ def detail(request,pk,application_id):
     return render(request,'crm/eta/detail.html',{'contract':contract,'application':app,'review_issues':issues,
         'summary':json.dumps(app.result.get('portal_summary',{}),ensure_ascii=False,indent=2),
         'authorize_form':ETAAuthorizeForm(initial={'version':str(app.updated_at),'fee':app.actual_fee,'currency':app.fee_currency}),
-        'return_form':ETAReturnForm(initial={'version':str(app.updated_at)}),'can_return':bool(app.active_export_id and not app.application_number and app.status not in eta.SENT)})
+        'return_form':ETAReturnForm(initial={'version':str(app.updated_at)}),'can_return':bool(app.active_export_id and not app.application_number and app.status not in eta.SENT and app.transport_state!='leased' and not app.submission_started_at)})
 
 
 @login_required
@@ -200,6 +201,7 @@ def authorize(request,pk,application_id):
     contract=get_object_or_404(Contract,pk=pk);app=app_for(contract,application_id,True)
     form=ETAAuthorizeForm(request.POST)
     issues=eta.review_issues(app) if app.status=='awaiting_confirmation' else ['Задание не ожидает подтверждения.']
+    if app.submission_started_at or app.application_number:issues.append('Подача уже начата. Повторное подтверждение и отправка запрещены; проверьте статус.')
     if form.is_valid() and not issues:
         if form.cleaned_data['version']!=str(app.updated_at) or app.source_hash!=eta.source_hash(contract,app.tourist):messages.error(request,'Сведения изменились. Проверьте актуальную сводку заново.')
         elif form.cleaned_data['fee']!=app.actual_fee or form.cleaned_data['currency']!=app.fee_currency:messages.error(request,'Сумма/валюта не совпадают с фактической сводкой.')
@@ -207,7 +209,10 @@ def authorize(request,pk,application_id):
             app.submission_authorized_at=timezone.now();app.submission_authorized_by=request.user
             app.authorization={};app.authorization=eta.authorization_context(app);app.save()
             AuditEvent.objects.create(actor=request.user,object_type='crm.ETAApplication',object_id=str(app.pk),action='eta_submission_authorized',changes={'summary_verified':True})
-            messages.success(request,'Подача этой сводки подтверждена. Скачайте файл разрешения для исполнителя. CRM ничего на портал не отправляла.')
+            if app.transport_state=='waiting' and app.worker_id:
+                app.transport_state='queued';app.transport_action='submit';app.next_check_at=None;app.save()
+                messages.success(request,'Подача подтверждена. Исполнитель продолжит сохранённую сессию после повторной проверки разрешения.')
+            else:messages.success(request,'Подача подтверждена. Для резервного файлового исполнителя доступно разрешение в разделе обмена файлами.')
     else:messages.error(request,'Подтверждение не принято: '+(' '.join(issues) if issues else 'подтвердите сводку, условия и фактический сбор.'))
     return redirect('eta_detail',pk=pk,application_id=app.pk)
 
@@ -231,8 +236,8 @@ def return_to_prepare(request,pk,application_id):
     require(request.user,'crm.change_etaapplication')
     app=app_for(get_object_or_404(Contract,pk=pk),application_id,True)
     form=ETAReturnForm(request.POST)
-    if form.is_valid() and form.cleaned_data['version']==str(app.updated_at) and app.status not in eta.SENT and not app.application_number:
-        app.active_export=None;app.active_identity_key=None;app.status='needs_data';app.submission_authorized_at=None;app.submission_authorized_by=None;app.authorization={}
+    if form.is_valid() and form.cleaned_data['version']==str(app.updated_at) and app.status not in eta.SENT and not app.application_number and app.transport_state!='leased' and not app.submission_started_at:
+        app.transport_state='manual';app.worker_id='';app.lease_sha256='';app.lease_until=None;app.submission_started_at=None;app.active_export=None;app.active_identity_key=None;app.status='needs_data';app.submission_authorized_at=None;app.submission_authorized_by=None;app.authorization={}
         for key in ('identity_confirmed','travel_confirmed','previous_visas_confirmed','travel_history_confirmed','portal_rules_checked'):app.preparation[key]=False
         app.preparation['answers']=[{**row,'confirmed':False} for row in app.preparation.get('answers',[])]
         app.save()

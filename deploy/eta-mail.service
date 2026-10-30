@@ -1,0 +1,23 @@
+[Unit]
+Description=Aborigen ETA official email receiver (read-only IMAP)
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=eta-executor
+Group=eta-executor
+WorkingDirectory=/opt/aborigen-crm
+EnvironmentFile=/etc/eta-mail.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/eta-venv/bin/python -m integrations.eta_executor.mail
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StateDirectory=eta-mail
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/eta-mail
+[Install]
+WantedBy=multi-user.target

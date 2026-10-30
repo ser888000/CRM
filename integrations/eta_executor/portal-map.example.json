@@ -1,0 +1,12 @@
+{
+  "version": "unverified-example-v1",
+  "verified": false,
+  "verified_at": "",
+  "allowed_hosts": ["www.eta.gov.lk", "eta.gov.lk"],
+  "start_url": "https://www.eta.gov.lk/slvisa/",
+  "date_format": "%m-%d-%Y",
+  "steps": [],
+  "summary": [],
+  "blockers": [],
+  "note": "No guessed live selectors. Complete and test this map against the actual official form before setting verified=true. Navigation must not submit an application."
+}
