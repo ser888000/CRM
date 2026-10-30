@@ -57,7 +57,7 @@ server {
     location / { return 301 https://crm.aborigen-tour.ru$request_uri; }
 }
 server {
-    listen 443 ssl;
+    listen 443 ssl http2;
     server_name crm.aborigen-tour.ru;
     ssl_certificate /etc/letsencrypt/live/crm.aborigen-tour.ru/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/crm.aborigen-tour.ru/privkey.pem;
