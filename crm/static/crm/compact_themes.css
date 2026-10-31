@@ -58,3 +58,11 @@ body[data-theme] .task-heading{justify-content:flex-start;flex-wrap:wrap;gap:12p
 body[data-theme] .task-heading h1{margin:0}
 body[data-theme] .task-filters,body[data-theme] .task-bulk{border:0;border-radius:0;background:transparent;padding:0;box-shadow:none}
 body[data-theme] #journal-filters.contract-filters>.journal-dates{display:flex;width:100%;margin-top:7px}
+
+/* Journal header filters use placeholders and compact, wrapping controls. */
+body[data-theme] .task-search-row,body[data-theme] .customer-filters,body[data-theme] .finance-search{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;margin:7px 0;padding:0;border:0;border-radius:0;background:transparent}
+body[data-theme] .compact-filter-field{flex:0 1 190px;min-width:0;max-width:100%}
+body[data-theme] .compact-filter-field input,body[data-theme] .compact-filter-field select{width:100%;min-width:0}
+body[data-theme] .compact-filter-field:has(input[name="q"]),body[data-theme] .compact-filter-field:has(input[name="name"]){flex-basis:235px}
+body[data-theme] .task-filter-actions,body[data-theme] .customer-filter-actions,body[data-theme] .finance-filter-actions{align-self:flex-start;display:flex;align-items:center;gap:6px}
+body[data-theme] main>h1.editor-title{display:block;margin:7px 0 10px}

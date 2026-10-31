@@ -49,6 +49,11 @@ class FinanceFilters(forms.Form):
         # Names preserve existing bookmarked filters while supporting directory ordering.
         self.fields['method'].choices=[('','Все способы оплаты')]+[(m.name,m.name) for m in PaymentMethod.objects.all()]
         self.fields['kind'].choices=[('','Все операции')]+payment_operation_choices()
+        for name in ['customer', 'operator', 'method', 'kind']:
+            field=self.fields[name]
+            field.widget.attrs.update({'placeholder':field.label,'aria-label':field.label})
+            if isinstance(field,forms.ChoiceField):
+                field.choices=[(value,field.label if value=='' else label) for value,label in field.choices]
     def clean(self):
         data=super().clean()
         if data.get('start') and data.get('end') and data['start']>data['end']:self.add_error('end','Окончание периода раньше начала.')

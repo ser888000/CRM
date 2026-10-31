@@ -52,6 +52,11 @@ class TaskFilters(forms.Form):
         self.fields.pop('operator')
         self.order_fields(['q','customer','employee','start','end'])
         self.fields['employee'].choices=[('','Все сотрудники'),('shared','Общие задачи')]+[(str(u.pk),u.get_full_name() or u.username) for u in get_user_model().objects.filter(Q(is_active=True)|Q(task__isnull=False)).distinct()]
+        for name in ['q', 'customer', 'employee']:
+            field=self.fields[name]
+            field.widget.attrs.update({'placeholder':field.label,'aria-label':field.label})
+            if isinstance(field,forms.ChoiceField):
+                field.choices=[(value,field.label if value=='' else label) for value,label in field.choices]
     def clean(self):
         data=super().clean()
         if data.get('start') and data.get('end') and data['end']<data['start']:self.add_error('end','Окончание периода раньше начала.')
@@ -172,7 +177,7 @@ class TaskEditorForm(forms.ModelForm):
     class Meta:
         model=Task
         fields=['task_type','title','description','result','due','customer','contract','operator','booking_number','employee','done']
-        widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':4}),'result':forms.Textarea(attrs={'rows':4})}
+        widgets={'title':LocationInput(TaskType),'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':8}),'result':forms.Textarea(attrs={'rows':8})}
     def __init__(self,*args,**kwargs):
         user=kwargs.pop('user',None)
         super().__init__(*args,**kwargs)

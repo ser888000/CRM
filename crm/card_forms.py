@@ -108,4 +108,4 @@ class TaskCardForm(forms.ModelForm):
     class Meta:
         model=Task
         fields=['task_type','due','done','description','result','employee']
-        widgets={'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':4}),'result':forms.Textarea(attrs={'rows':4})}
+        widgets={'due':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),'description':forms.Textarea(attrs={'rows':8}),'result':forms.Textarea(attrs={'rows':8})}

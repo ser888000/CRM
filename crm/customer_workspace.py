@@ -42,6 +42,12 @@ class CustomerFilters(forms.Form):
     email=forms.CharField(label='E-mail',required=False,max_length=250)
     kind=forms.ChoiceField(label='Тип заказчика',required=False,choices=[('','Все заказчики'),('person','Физическое лицо'),('company','Юридическое лицо')])
 
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        for name in ('name','phone','email'):
+            field=self.fields[name]
+            field.widget.attrs.update({'placeholder':field.label,'aria-label':field.label})
+
 
 def matching_rows(data):
     rows=[]
