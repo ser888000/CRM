@@ -1,4 +1,4 @@
-"""Superuser-only asynchronous backup UI; the web process never reads server secrets."""
+"""Superuser-only backup UI; no root commands or direct access to private settings."""
 import json
 import os
 import re
