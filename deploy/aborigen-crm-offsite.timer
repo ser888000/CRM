@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily external CRM recovery backup
+[Timer]
+OnCalendar=*-*-* 03:30:00 Europe/Moscow
+Persistent=true
+Unit=aborigen-crm-offsite.service
+[Install]
+WantedBy=timers.target

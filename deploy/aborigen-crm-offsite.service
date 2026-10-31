@@ -1,0 +1,10 @@
+[Unit]
+Description=Encrypted and verified CRM backup to S3
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/libexec/aborigen-crm-recovery.py daily
+TimeoutStartSec=2h

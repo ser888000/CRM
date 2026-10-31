@@ -1,0 +1,7 @@
+[Unit]
+Description=Watch for administrator CRM backup requests
+[Path]
+PathExists=/var/lib/aborigen-crm/recovery-request.json
+Unit=aborigen-crm-recovery.service
+[Install]
+WantedBy=multi-user.target

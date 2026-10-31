@@ -37,7 +37,7 @@ class OperatorPaidTests(TestCase):
     def test_journal_button_version_and_shared_booking_deadline(self):
         journal=self.client.get('/',{'start':'2026-10-01','end':'2026-10-31'})
         self.assertContains(journal,'data-version="'+str(self.contract.updated_at)+'"')
-        self.assertContains(journal,'Оплачено ТО')
+        self.assertContains(journal,'Статус ТО')
         self.assertNotContains(journal,'Дата оплаты ТО')
         Booking.objects.create(contract=self.contract,number='ONE')
         Booking.objects.create(contract=self.contract,number='TWO')

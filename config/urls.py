@@ -1,3 +1,4 @@
+from crm import recovery_views
 from crm import interface_preferences
 from crm import eta_api,eta_live_views
 from crm import eta_views
@@ -7,6 +8,10 @@ from django.contrib import admin
 from django.urls import path
 from crm import one_c_views,reference_dialog,views,import_views,card_views,passport_ocr,customer_views,batch_views,task_views,finance_views,update_views,customer_workspace,library_views,legacy_history_views,tourist_lookup
 urlpatterns = [
+path('management/backups/',recovery_views.page,name='recovery_page'),
+path('management/backups/status/',recovery_views.status,name='recovery_status'),
+path('management/backups/start/',recovery_views.start,name='recovery_start'),
+path('management/backups/download/<uuid:request_id>/',recovery_views.download,name='recovery_download'),
 path('preferences/interface/',interface_preferences.preferences,name='interface_preferences'),
 path('contracts/<int:pk>/eta/tourists/json/',eta_views.simple_selected_download,name='eta_selected_download'),
 path('contracts/<int:pk>/eta/tourists/<int:tourist_id>/json/',eta_views.simple_tourist_download,name='eta_simple_download'),

@@ -80,4 +80,5 @@ install -m 640 -o root -g aborigen-crm /dev/null /var/lib/aborigen-crm-updater/i
 systemctl enable --now aborigen-crm-cleanup.timer
 systemctl enable --now aborigen-crm
 systemctl restart aborigen-crm
+bash deploy/install-recovery.sh
 systemctl status aborigen-crm --no-pager

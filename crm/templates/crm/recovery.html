@@ -1,0 +1,23 @@
+{% extends 'crm/base.html' %}{% load static %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'crm/contract_card.css' %}">{% endblock %}
+{% block content %}
+<a class="back-link" href="{% url 'admin:index' %}">← Справочники и управление</a>
+<h1 class="editor-title">Резервные копии</h1>
+<article class="section-card"><h2>Скачать на компьютер</h2>
+<p>База содержит договоры, заказчиков, туристов, финансы, задачи, справочники, Библиотеку и документы ETA. Полный архив дополнительно содержит программу и настройки для восстановления на другом сервере.</p>
+<p>Копии содержат персональные данные. Полный архив также содержит секретные настройки: храните его в защищённом месте и не отправляйте в переписку.</p>
+{% if not manual.installed %}<p>Служба резервного копирования ещё не установлена. Требуется установка на сервере.</p>{% endif %}
+<form method="post" action="{% url 'recovery_start' %}" id="recovery-form">{% csrf_token %}
+<button name="kind" value="database" {% if not manual.installed or manual.busy %}disabled{% endif %}>Подготовить копию базы</button>
+<button name="kind" value="full" {% if not manual.installed or manual.busy %}disabled{% endif %}>Подготовить полный архив</button>
+</form><p id="recovery-message" role="status">{% if manual.busy %}Копия готовится. Можно продолжать работу в CRM.{% else %}{{ manual.message|default:'Создайте свежую копию перед скачиванием.' }}{% endif %}</p>
+<p><a id="recovery-download" hidden>Скачать подготовленную копию</a></p>
+<p class="muted">На сервере сохраняется только последняя подготовленная для скачивания копия. Новая заменяет её после успешной проверки.</p>
+</article>
+<article class="section-card"><h2>Ежедневная копия вне сервера</h2>
+<p id="recovery-remote" role="status">{% if remote.last_success %}Есть проверенная внешняя копия.{% else %}Внешнее хранилище пока не настроено или первая копия ещё не проверена.{% endif %}</p>
+<p id="recovery-schedule">{% if scheduled %}Ежедневное копирование включено: 03:30 по Москве.{% else %}Ежедневная отправка во внешнее хранилище пока не включена.{% endif %}</p>
+<p>Внешние копии шифруются. Сохраняются до 14 ежедневных и 3 ежемесячных точек восстановления. Доступ к хранилищу и пароль восстановления настраиваются только на сервере.</p>
+</article>
+<script src="{% static 'crm/recovery.js' %}"></script>
+{% endblock %}
