@@ -2,7 +2,7 @@
 <h1>Договоры</h1>
 <a class="button" href="{% url 'contract_new' %}">+ Новый договор</a> <a class="button" href="{% url 'tourvisor_import' %}">Импорт из Турвизора</a>
 {% if can_export_one_c %}<a class="button secondary" href="{% url 'one_c_journal_export' %}?{{ export_filter_query }}">Выгрузка в 1С</a>{% endif %}
-<form id="journal-filters" method="get">
+<form id="journal-filters" class="contract-filters" method="get">
 <div class="filters"><input name="customer" placeholder="Заказчик" aria-label="Заказчик" value="{{ request.GET.customer }}"><input name="email" placeholder="E-mail" aria-label="E-mail" value="{{ request.GET.email }}"><input name="phone" placeholder="Телефон" aria-label="Телефон" value="{{ request.GET.phone }}"><button>Применить</button><a href="{{ reset_filters_url }}">Сбросить</a></div>
 {% include 'crm/journal_dates.html' %}
 <input type="hidden" name="sort" id="journal-sort" value="{{ sort }}">

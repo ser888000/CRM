@@ -52,3 +52,9 @@ body[data-theme] tr[data-open-row]{cursor:pointer}
 body[data-theme] .finance-filters{padding:0;background:transparent;border:0;border-radius:0;margin:7px 0}
 body[data-theme] .finance-filters .finance-search{padding:0;margin:7px 0;gap:9px}
 body[data-theme] .finance-columns{margin-top:7px}
+
+/* Keep journal controls compact and aligned with their headings. */
+body[data-theme] .task-heading{justify-content:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:7px;flex-direction:row;align-items:center}
+body[data-theme] .task-heading h1{margin:0}
+body[data-theme] .task-filters,body[data-theme] .task-bulk{border:0;border-radius:0;background:transparent;padding:0;box-shadow:none}
+body[data-theme] #journal-filters.contract-filters>.journal-dates{display:flex;width:100%;margin-top:7px}

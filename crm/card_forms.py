@@ -7,12 +7,22 @@ from .widgets import MoneyInput
 from .reference_defaults import apply_reference_defaults
 
 class CardContractForm(ContractForm):
+    class Media:
+        js=['crm/remote_choices_v3.js']
     class Meta(ContractForm.Meta):
         exclude=['operator_due','operator_paid_in_full']
     version=forms.CharField(widget=forms.HiddenInput,required=False)
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.fields['version'].initial=str(self.instance.updated_at) if self.instance.pk else ''
+        # Render only the selected customer; search the directory on demand.
+        field=self.fields['customer']
+        selected=self.data.get(self.add_prefix('customer')) if self.is_bound else self.instance.customer_id or self.initial.get('customer')
+        if hasattr(selected,'pk'):selected=selected.pk
+        choices=field.queryset.filter(pk=selected).only('pk','name') if selected and str(selected).isdigit() else field.queryset.none()
+        field.widget.choices=[('','---------')]+[(c.pk,c.name) for c in choices]
+        field.widget.attrs.update({'data-remote-choices':'/contracts/choices/customers/','data-search-label':'Найти заказчика'})
+
         if self.instance.tourvisor_id:
             self.fields['number'].disabled=True;self.fields['date'].disabled=True
         for name,field in self.fields.items():

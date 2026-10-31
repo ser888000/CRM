@@ -196,3 +196,12 @@ def contract_card(request,pk=None):
     return render(request,'crm/contract_card.html',{'legacy_operator_original':legacy_record.payload.get('ADD_SUM_OPLATY_TO',0) if legacy_record else 0,'legacy_record':legacy_record,'legacy_snapshot_fields':snapshot_fields,'contract':contract,'is_new':not pk,'form':form,'operator_due_form':deadline,'field_groups':[(title,[form[name] for name in fields]) for title,fields in GROUPS],
         'schedule_fields':[f for f in form if f.name.startswith('task_due_')], 'contract_task_rows':[{'kind':kind,'selected':str(kind.pk) in {str(v) for v in (form['task_templates'].value() or [])},'date':form[f'task_due_{kind.pk}']} for kind in form.fields['task_templates'].queryset], 'new_customer_form':CustomerCardForm(prefix='customer-new'),'customer_form':customer_form,'payment_form':payment_form,'booking_form':booking_form,'line_form':line_form,'task_form':task_form,'tourist_form':TouristCardForm(prefix='tourist-new') if invalid_action=='tourist' and invalid_id else tourist_form,
         'payment_groups':[('Заказчик',[p for p in payments if p.kind in ('customer','customer_refund')]),('Туроператор',[p for p in payments if p.kind in ('operator','operator_refund')])],'payments':payments,'task_count':task_count,'has_more_tasks':task_count>len(tasks),'tasks':tasks,'lines':lines,'bookings':bookings,'history':history,'active_tab':active})
+
+
+@login_required
+@never_cache
+def customer_choices(request):
+    from django.http import JsonResponse
+    from .editor_choices import customers
+    require(request.user,'crm.view_customer')
+    return JsonResponse({'choices':customers(request.GET.get('q',''))})

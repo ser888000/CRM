@@ -45,14 +45,15 @@ class CustomerFilters(forms.Form):
 
 def matching_rows(data):
     rows=[]
-    qs=Customer.objects.annotate(contract_count=Count('contract',distinct=True)).only('id','name','kind','main_phone','phones','main_email','emails','inn').order_by('name','pk')
+    counts=dict(Contract.objects.order_by().values('customer_id').annotate(total=Count('pk')).values_list('customer_id','total'))
+    qs=Customer.objects.only('id','name','kind','main_phone','phones','main_email','emails','inn').order_by('name','pk')
     if data['kind']:qs=qs.filter(kind=data['kind'])
     for customer in qs:
         if normalize_location(data['name']) not in normalize_location(customer.name+' '+customer.inn):continue
         contact_data={key:getattr(customer,key) for key in ('main_phone','phones','main_email','emails')}
         if data['phone'] and (not phone_key(data['phone']) or not any(phone_key(data['phone']) in v for v in contacts(contact_data,'phone'))):continue
         if data['email'] and not any(data['email'].strip().casefold() in v for v in contacts(contact_data,'email')):continue
-        values={'name':customer.name,'kind':customer.get_kind_display(),'phone':' · '.join(v for v in (customer.main_phone,customer.phones) if v),'email':' · '.join(v for v in (customer.main_email,customer.emails) if v),'inn':customer.inn,'contracts':customer.contract_count}
+        values={'name':customer.name,'kind':customer.get_kind_display(),'phone':' · '.join(v for v in (customer.main_phone,customer.phones) if v),'email':' · '.join(v for v in (customer.main_email,customer.emails) if v),'inn':customer.inn,'contracts':counts.get(customer.pk,0)}
         cells=[{'key':key,'text':str(values[key]),'filter_value':str(values[key]) or '—'} for key,_ in COLUMNS]
         rows.append({'customer':customer,'values':values,'cells':cells})
     return rows
